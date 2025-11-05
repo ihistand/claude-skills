@@ -114,7 +114,8 @@ Before submitting:
 
 | Skill | Description | Status |
 |-------|-------------|--------|
-| [dataform-engineering-fundamentals](dataform-engineering-fundamentals/) | BigQuery Dataform TDD workflow enforcement | ✅ Complete |
+| [dataform-engineering-fundamentals](dataform-engineering-fundamentals/) | Generic BigQuery Dataform TDD workflow enforcement (suitable for upstream contribution) | ✅ Complete |
+| [acuantia-dataform](acuantia-dataform/) | Acuantia-specific Dataform patterns (extends dataform-engineering-fundamentals with ODS, Looker integration, dataset conventions) | ✅ Complete |
 
 ## Author
 

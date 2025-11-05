@@ -1,8 +1,8 @@
-# Pull Request: Add dataform-engineering-fundamentals skill
+# Acuantia Dataform Engineering Skill
 
 ## Summary
 
-Generic skill that adapts superpowers TDD principles to BigQuery Dataform development. Enforces safety practices, proper architecture, and comprehensive documentation standards to prevent technical debt in data transformation pipelines. Suitable for any Dataform project, regardless of organization or BI tool.
+Acuantia-specific Dataform skill that extends `dataform-engineering-fundamentals` with organization-specific patterns. Enforces all general Dataform best practices plus Acuantia conventions: ODS architecture, Looker integration, dataset naming, and cross-project coordination.
 
 ## What This Skill Does
 
@@ -13,8 +13,8 @@ Generic skill that adapts superpowers TDD principles to BigQuery Dataform develo
 - **Dependency management**: ALWAYS use `${ref()}`, NEVER hardcoded table paths
 - **Documentation**: Mandatory `columns: {}` blocks with comprehensive descriptions
 - **Safety practices**: `--schema-suffix dev`, `--dry-run`, validation queries
-- **Architecture**: Layered structure (sources → intermediate → output), schema configuration rules
-- **Best practices**: Generic patterns applicable to any Dataform project
+- **Architecture**: Layered structure (sources → intermediate → output), proper file naming
+- **Integration**: Looker optimization, schema configuration rules
 
 **Integration with Superpowers Ecosystem**:
 - Builds upon: `superpowers:test-driven-development` (foundation)
@@ -56,7 +56,7 @@ Generic skill that adapts superpowers TDD principles to BigQuery Dataform develo
 
 2. **Dataform-specific patterns**: Table references via `${ref()}`, source declarations, schema suffix resolution, and BigQuery-specific optimizations require specialized guidance.
 
-3. **Real-world validation**: Developed and tested against actual production Dataform codebases, distilling universal patterns that apply across organizations.
+3. **Real-world validation**: Developed against actual production Dataform codebase (acuantia-gcp-dataform project), resolving real conflicts between project standards and general best practices.
 
 4. **High cost of shortcuts**: A "quick" report without tests and proper declarations costs 10 minutes initially but 110+ minutes debugging production issues and stakeholder escalations.
 
@@ -72,7 +72,7 @@ Generic skill that adapts superpowers TDD principles to BigQuery Dataform develo
 
 **Word count**: ~3,200 words (comprehensive but necessary for discipline-enforcing skill with extensive rationalization resistance)
 
-**Standards covered**: 20+ non-negotiable practices including TDD, ${ref()} usage, documentation, safety checks, architecture patterns, schema configuration, and best practices applicable to any BI tool integration.
+**Standards covered**: 20+ non-negotiable practices including TDD, ${ref()} usage, documentation, safety checks, architecture patterns, file naming, schema configuration, and Looker integration.
 
 **Real-world impact**: Time math shows discipline is faster (20 min proper implementation vs 75+ min with shortcuts + production issues).
 

@@ -1,15 +1,17 @@
 ---
-name: dataform-engineering-fundamentals
-description: Use when developing BigQuery Dataform transformations, SQLX files, source declarations, or troubleshooting pipelines - enforces TDD workflow (tests first), ALWAYS use ${ref()} never hardcoded table paths, comprehensive columns:{} documentation, safety practices (--schema-suffix dev, --dry-run), proper ref() syntax, .sqlx for new declarations, no schema config in operations/tests, and architecture patterns that prevent technical debt under time pressure
+name: acuantia-dataform
+description: Use when working on Acuantia's BigQuery Dataform pipeline (acuantia-gcp-dataform project) - enforces all dataform-engineering-fundamentals practices plus Acuantia-specific patterns: ODS two-arg ref() syntax, looker_ filename prefix for Looker tables, Looker integration context, acuantia dataset conventions, and coordination with looker/callrail_data_export/dialpad_data_integration projects
 ---
 
-# Dataform Engineering Fundamentals
+# Acuantia Dataform Engineering
 
 ## Overview
 
+**REQUIRED FOUNDATION:** This skill builds upon `dataform-engineering-fundamentals`. All general Dataform best practices from that skill apply here. This skill adds Acuantia-specific patterns and integration context.
+
 **Core principle**: Safety practices and proper architecture are NEVER optional in Dataform development, regardless of time pressure or business urgency.
 
-**REQUIRED FOUNDATION:** This skill builds upon superpowers:test-driven-development. All TDD principles from that skill apply to Dataform development. This skill adapts TDD specifically for BigQuery Dataform SQLX files.
+**TDD Foundation:** Both this skill and `dataform-engineering-fundamentals` build upon superpowers:test-driven-development. All TDD principles from that skill apply to Dataform development.
 
 Time pressure does not justify skipping safety checks or creating technical debt. The time "saved" by shortcuts gets multiplied into hours of debugging, broken dependencies, and production issues.
 
@@ -47,7 +49,7 @@ dataform run --actions my_table
 dataform run --schema-suffix dev --actions my_table
 ```
 
-**Why**: Writes to `schema_dev.my_table` instead of `schema_prod.my_table` (or adds `_dev` suffix based on your configuration). Allows safe testing without impacting production data or dashboards.
+**Why**: Writes to `looker_dev.my_table` instead of `looker_prod.my_table`. Allows safe testing without impacting production data or dashboards.
 
 ### 2. Always Use `--dry-run` Before Execution
 
@@ -69,21 +71,21 @@ dataform run --schema-suffix dev --actions my_table
 **WRONG**: Using tables without source declarations
 ```sql
 -- This will break dependency tracking
-FROM `project_id.external_schema.table_name`
+FROM `acuantia.callrail_api.calls`
 ```
 
 **CORRECT**: Create source declaration first
 ```sql
--- definitions/sources/external_system/table_name.sqlx
+-- definitions/sources/callrail/calls.sqlx
 config {
   type: "declaration",
-  database: "project_id",
-  schema: "external_schema",
-  name: "table_name"
+  database: "acuantia",
+  schema: "callrail_api",
+  name: "calls"
 }
 
 -- Then reference it
-FROM ${ref("table_name")}
+FROM ${ref("calls")}
 ```
 
 ### 4. ALWAYS Use ${ref()} - NEVER Hardcoded Table Paths
@@ -91,17 +93,17 @@ FROM ${ref("table_name")}
 **WRONG**: Hardcoded table paths
 ```sql
 -- NEVER do this
-FROM `project.external_schema.table_name`
-FROM `project.reporting_schema.customer_metrics`
-SELECT * FROM project.source_schema.customers
+FROM `acuantia.dialpad_api.calls`
+FROM `acuantia.looker_prod.customer_metrics`
+SELECT * FROM acuantia.ods.sap_customers
 ```
 
 **CORRECT**: Always use ${ref()}
 ```sql
 -- Create source declaration first, then reference
-FROM ${ref("table_name")}
+FROM ${ref("calls")}
 FROM ${ref("customer_metrics")}
-SELECT * FROM ${ref("customers")}
+SELECT * FROM ${ref("sap_customers")}
 ```
 
 **Why**:
@@ -114,9 +116,9 @@ SELECT * FROM ${ref("customers")}
 
 ### 5. Proper ref() Syntax
 
-**WRONG**: Including schema in ref() unnecessarily
+**WRONG**: Including schema in ref() for most tables
 ```sql
-FROM ${ref("external_schema", "sales_order")}
+FROM ${ref("magento_rotoplas_me_22_prod", "sales_order")}
 ```
 
 **CORRECT**: Use single argument when source declared
@@ -124,15 +126,17 @@ FROM ${ref("external_schema", "sales_order")}
 FROM ${ref("sales_order")}
 ```
 
-**When to use two-argument ref()**:
-- Source declarations that haven't been imported yet
-- Special schema architectures where schema suffix behavior needs explicit control
-- Cross-database references in multi-project setups
+**SPECIAL CASE - ODS Tables**: Use two-argument ref() for ODS to avoid suffix duplication
+```sql
+-- Correct for ODS tables
+FROM ${ref("ods", "sap_customers")}
+-- NOT ${ref("sap_customers")} - this would create ods_dev_dev with --schema-suffix dev
+```
 
 **Why**:
 - Single-argument ref() works for most tables
-- Dataform resolves the full path from source declarations
-- Two-argument form is only needed for special cases
+- Two-argument ref() needed for ODS architecture (prevents ods_dev_dev)
+- ODS is special: `acuantia.ods` is source of truth, `ods_dev`/`ods_prod` are staging
 
 ### 6. Basic Validation Queries
 
@@ -140,11 +144,11 @@ Always verify your output:
 ```bash
 # Check row counts
 bq query --use_legacy_sql=false \
-  "SELECT COUNT(*) FROM \`project.schema_dev.my_table\`"
+  "SELECT COUNT(*) FROM \`acuantia.looker_dev.my_table\`"
 
 # Check for nulls in critical fields
 bq query --use_legacy_sql=false \
-  "SELECT COUNT(*) FROM \`project.schema_dev.my_table\`
+  "SELECT COUNT(*) FROM \`acuantia.looker_dev.my_table\`
    WHERE key_field IS NULL"
 ```
 
@@ -161,8 +165,8 @@ definitions/
   sources/          # External data declarations
   intermediate/     # Transformations and business logic
   output/           # Final tables for consumption
-    reports/        # Reporting tables
-    marts/          # Data marts for specific use cases
+    looker/         # Looker-specific views
+    reports/        # Ad-hoc reports
 ```
 
 **Don't**: Create monolithic queries directly in output layer
@@ -205,14 +209,14 @@ config {
 
 **STRONGLY PREFER**: .sqlx files for ALL new declarations
 ```sql
--- definitions/sources/external_system/table_name.sqlx
+-- definitions/sources/callrail/calls.sqlx
 config {
   type: "declaration",
-  database: "project_id",
-  schema: "external_schema",
-  name: "table_name",
+  database: "acuantia",
+  schema: "callrail_api",
+  name: "calls",
   columns: {
-    id: "Unique identifier for records",
+    call_id: "Unique call identifier from Dialpad API",
     // ... more columns
   }
 }
@@ -220,17 +224,33 @@ config {
 
 **ACCEPTABLE (legacy only)**: .js files for existing declarations
 ```javascript
-// definitions/sources/legacy_declarations.js (existing file)
+// definitions/sources/ods_declarations.js (existing file)
 declare({
-  database: "project_id",
-  schema: "source_schema",
-  name: "customers"
+  database: "acuantia",
+  schema: "ods",
+  name: "sap_customers"
 });
 ```
 
 **Rule**: ALL NEW source declarations MUST be .sqlx files. Existing .js declarations can remain but should be migrated to .sqlx when modifying them.
 
 **Why**: .sqlx files support column documentation, are more maintainable, and integrate better with Dataform's dependency tracking.
+
+### File Naming Conventions
+
+**Looker Tables**: All files in `definitions/output/looker/` MUST be prefixed with `looker_`
+
+```sql
+-- CORRECT
+definitions/output/looker/looker_customer_metrics.sqlx
+definitions/output/looker/looker_sales_summary.sqlx
+
+-- WRONG
+definitions/output/looker/customer_metrics.sqlx
+definitions/output/looker/sales_summary.sqlx
+```
+
+**Why**: Makes it easy to identify Looker-specific tables and prevents naming conflicts.
 
 ### Schema Configuration Rules
 
@@ -268,6 +288,30 @@ config {
 
 **Why**: Operations live in the default `dataform` schema and assertions live in `dataform_assertions` schema (configured in `workflow_settings.yaml`). Specifying schema explicitly can cause conflicts.
 
+### Looker Integration Context
+
+Tables in `definitions/output/looker/` are consumed by the Google Looker reporting system.
+
+**Key considerations**:
+- Add partitioning/clustering for query performance
+- Use descriptive column names (Looker dimension names derive from these)
+- Include comprehensive column descriptions (sync to Looker metadata)
+- Consider Looker user query patterns when designing schema
+- Reference the `looker/` project directory for existing dashboard patterns
+
+**Example Looker-optimized config**:
+```sql
+config {
+  type: "table",
+  schema: "looker_prod",
+  tags: ["looker", "daily"],
+  bigquery: {
+    partitionBy: "DATE(order_date)",
+    clusterBy: ["customer_id", "region"]
+  }
+}
+```
+
 ## Documentation Standards (Non-Negotiable)
 
 All tables with `type: "table"` MUST include comprehensive `columns: {}` documentation in the config block.
@@ -278,7 +322,7 @@ All tables with `type: "table"` MUST include comprehensive `columns: {}` documen
 ```sql
 config {
   type: "table",
-  schema: "reporting"
+  schema: "looker_prod"
 }
 
 SELECT customer_id, total_revenue FROM ${ref("orders")}
@@ -288,9 +332,9 @@ SELECT customer_id, total_revenue FROM ${ref("orders")}
 ```sql
 config {
   type: "table",
-  schema: "reporting",
+  schema: "looker_prod",
   columns: {
-    customer_id: "Unique customer identifier from source system",
+    customer_id: "Unique customer identifier from SAP (KUNNR field)",
     total_revenue: "Sum of all order amounts in USD, excluding refunds"
   }
 }
@@ -303,20 +347,24 @@ SELECT customer_id, total_revenue FROM ${ref("orders")}
 Column descriptions should be derived from:
 
 1. **Source Declarations**: Copy descriptions from upstream source tables
-2. **Third-party Documentation**: Use official API documentation for external systems (CRM, ERP, analytics platforms)
+2. **Third-party Documentation**:
+   - SAP: Use publicly available SAP field documentation (e.g., KUNNR = Customer Number)
+   - Dialpad: Use Dialpad API documentation for field definitions
+   - HubSpot: Use HubSpot API docs for property descriptions
+   - Magento/Adobe Commerce: Use Adobe Commerce schema documentation
 3. **Business Logic**: Document calculated fields, transformations, and business rules
-4. **BI Tool Requirements**: Include context that dashboard builders and analysts need
+4. **Looker Requirements**: Include context that Looker dashboard builders need
 
-**Example with ERP source documentation**:
+**Example with SAP source documentation**:
 ```sql
 config {
   type: "table",
-  schema: "reporting",
+  schema: "looker_prod",
   columns: {
-    customer_id: "Unique customer identifier from ERP system",
-    customer_name: "Customer legal business name",
-    account_group: "Customer classification code for account management",
-    credit_limit: "Maximum allowed credit in USD"
+    customer_id: "SAP Customer Number (KUNNR) - unique identifier in SAP ERP",
+    customer_name: "Customer name (NAME1 field) - legal business name",
+    account_group: "Customer Account Group (KTOKD) - classification code",
+    credit_limit: "Credit limit in USD (KLIMK field) - maximum allowed credit"
   }
 }
 ```
@@ -326,19 +374,21 @@ config {
 When applicable, source declarations should also document columns:
 
 ```sql
--- definitions/sources/external_api/events.sqlx
+-- definitions/sources/dialpad/calls.sqlx
 config {
   type: "declaration",
-  database: "project_id",
-  schema: "external_api",
-  name: "events",
-  description: "Event records from external API with enriched data",
+  database: "acuantia",
+  schema: "dialpad_api",
+  name: "calls",
+  description: "Dialpad call records with transcripts and sentiment analysis",
   columns: {
-    event_id: "Unique event identifier from API",
-    user_id: "User identifier who triggered the event",
-    event_type: "Type of event (click, view, purchase, etc.)",
-    timestamp: "UTC timestamp when event occurred",
-    properties: "JSON object containing event-specific properties"
+    call_id: "Unique call identifier from Dialpad API",
+    external_number: "Customer phone number that originated or received the call",
+    duration: "Call duration in seconds",
+    start_time: "UTC timestamp when call started",
+    transcript: "Full call transcript from Dialpad AI",
+    sentiment: "Overall call sentiment: positive/negative/neutral/mixed",
+    sentiment_score: "Sentiment confidence score (0.0 to 1.0)"
   }
 }
 ```
@@ -406,11 +456,11 @@ dataform run --schema-suffix dev --run-tests --actions assert_customer_metrics
 # ERROR: Table customer_metrics does not exist ✓ EXPECTED
 ```
 
-**Step 3: Write minimal implementation** (definitions/output/reports/customer_metrics.sqlx)
+**Step 3: Write minimal implementation** (definitions/output/looker/customer_metrics.sqlx)
 ```sql
 config {
   type: "table",
-  schema: "reporting",
+  schema: "looker_prod",
   columns: {
     customer_id: "Unique customer identifier",
     lifetime_value: "Total revenue from customer in USD"
@@ -474,6 +524,7 @@ If you're thinking:
 | "Correctness over elegance" | Architecture = maintainability, not elegance | Proper structure IS correctness |
 | "I'll add tests after" | After = never | Write tests FIRST (TDD), then implementation |
 | "I'll add documentation after" | After = never | Add columns: {} in config block immediately |
+| "Looker prefix isn't necessary" | Causes naming conflicts and confusion | Always prefix Looker tables with looker_ |
 | "Working late, just need it working" | Exhaustion causes mistakes | Discipline matters MORE when tired |
 | "Column docs are optional for internal tables" | All tables become external eventually | Document everything, always |
 | "Tests after achieve same result" | Tests-after = checking what it does; tests-first = defining what it should do | TDD catches design flaws early |
@@ -492,6 +543,7 @@ If you're thinking any of these thoughts, STOP and follow the skill:
 - "I'll add column documentation later"
 - "This table doesn't need columns: {} block"
 - "I'll use a .js file for declarations (faster to write)"
+- "I don't need to prefix this Looker table with looker_"
 - "I'll add schema: config to this operation/test file"
 - "I'll fix the technical debt later"
 - "This is different because [business reason]"
@@ -504,10 +556,10 @@ If you're thinking any of these thoughts, STOP and follow the skill:
 
 ```sql
 -- WRONG: Direct table reference
-FROM `project.external_schema.contacts`
+FROM `acuantia.hubspot.contact`
 
 -- CORRECT: Declare source first
-FROM ${ref("contacts")}
+FROM ${ref("contact")}
 ```
 
 **Fix**: Create source declaration in `definitions/sources/` before using in queries.
@@ -558,19 +610,31 @@ FROM ${ref("table_name")}
 
 **Symptom**: Using backtick-quoted table paths in queries
 ```sql
-FROM `project.external_api.events`
-SELECT * FROM project.source_schema.customers
+FROM `acuantia.dialpad_api.calls`
+SELECT * FROM acuantia.ods.sap_customers
 ```
 
 **Fix**: ALWAYS use ${ref()} after creating source declarations
 ```sql
-FROM ${ref("events")}
-SELECT * FROM ${ref("customers")}
+FROM ${ref("calls")}
+SELECT * FROM ${ref("ods", "sap_customers")}
 ```
 
 **Why critical**: Hardcoded paths break dependency tracking, prevent --schema-suffix from working, and make refactoring impossible.
 
-### Mistake 9: Adding schema: config to operations or tests
+### Mistake 9: Missing looker_ prefix for Looker tables
+
+**Symptom**: File in `definitions/output/looker/` without looker_ prefix
+```
+definitions/output/looker/customer_metrics.sqlx  ❌
+```
+
+**Fix**: Add looker_ prefix to filename
+```
+definitions/output/looker/looker_customer_metrics.sqlx  ✅
+```
+
+### Mistake 10: Adding schema: config to operations or tests
 
 **Symptom**: Operations or test files with explicit schema configuration
 ```sql
