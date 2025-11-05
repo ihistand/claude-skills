@@ -1,305 +1,121 @@
 ---
 name: acuantia-dataform
-description: Use when working on Acuantia's BigQuery Dataform pipeline (acuantia-gcp-dataform project) - enforces all dataform-engineering-fundamentals practices plus Acuantia-specific patterns: ODS two-arg ref() syntax, looker_ filename prefix for Looker tables, Looker integration context, acuantia dataset conventions, and coordination with looker/callrail_data_export/dialpad_data_integration projects
+description: Use when working on Acuantia's BigQuery Dataform pipeline (acuantia-gcp-dataform project) - adds Acuantia-specific patterns on top of dataform-engineering-fundamentals: ODS two-arg ref() syntax, looker_ filename prefix, Looker integration (looker_prod/looker_dev), acuantia dataset conventions, coordination with callrail_data_export/dialpad_data_integration/looker projects
 ---
 
 # Acuantia Dataform Engineering
 
-## Overview
+## REQUIRED PREREQUISITE
 
-**REQUIRED FOUNDATION:** This skill builds upon `dataform-engineering-fundamentals`. All general Dataform best practices from that skill apply here. This skill adds Acuantia-specific patterns and integration context.
+**YOU MUST USE `dataform-engineering-fundamentals` SKILL FIRST.**
 
-**Core principle**: Safety practices and proper architecture are NEVER optional in Dataform development, regardless of time pressure or business urgency.
+This skill is a **thin extension layer** that adds Acuantia-specific patterns on top of the generic `dataform-engineering-fundamentals` skill.
 
-**TDD Foundation:** Both this skill and `dataform-engineering-fundamentals` build upon superpowers:test-driven-development. All TDD principles from that skill apply to Dataform development.
+**Before using this skill:**
+1. Read and follow `dataform-engineering-fundamentals` completely
+2. Apply ALL generic Dataform practices from that skill
+3. Then apply the Acuantia-specific patterns below
 
-Time pressure does not justify skipping safety checks or creating technical debt. The time "saved" by shortcuts gets multiplied into hours of debugging, broken dependencies, and production issues.
+**This skill does NOT repeat generic practices.** If you're looking for:
+- TDD workflow → See `dataform-engineering-fundamentals`
+- Safety practices (--schema-suffix dev, --dry-run) → See `dataform-engineering-fundamentals`
+- ${ref()} enforcement → See `dataform-engineering-fundamentals`
+- Documentation standards → See `dataform-engineering-fundamentals`
+- Architecture patterns → See `dataform-engineering-fundamentals`
+
+**This skill ONLY adds**: Acuantia-specific conventions that differ from or extend generic patterns.
 
 ## When to Use
 
-Use this skill for ANY Dataform work:
-- Creating new SQLX transformations
-- Modifying existing tables
-- Adding data sources
-- Troubleshooting pipeline failures
-- "Quick" reports or ad-hoc analysis
+Use this skill when working on:
+- `acuantia-gcp-dataform` project
+- Tables that integrate with Acuantia's Looker instance
+- Transformations using Acuantia's ODS (Operational Data Store) architecture
+- Pipelines coordinating with `callrail_data_export` or `dialpad_data_integration` projects
 
-**Especially** use when:
-- Under time pressure or deadlines
-- Stakeholders are waiting
-- Working late at night (exhausted)
-- Tempted to "just make it work"
+## Acuantia-Specific Patterns
 
-**Related Skills**:
-- **Before designing new features**: Use superpowers:brainstorming to refine requirements into clear designs before writing any code
-- **When troubleshooting failures**: Use superpowers:systematic-debugging for structured problem-solving
-- **When debugging complex issues**: Use superpowers:root-cause-tracing to trace errors back to their source
+### 1. ODS Architecture and Two-Argument ref()
 
-## Non-Negotiable Safety Practices
+Acuantia uses a special ODS (Operational Data Store) architecture that requires two-argument ref() syntax.
 
-These are ALWAYS required. No exceptions for deadlines, urgency, or "simple" tasks:
+**ODS Architecture**:
+- `acuantia.ods` - Source of truth (master operational data)
+- `acuantia.ods_dev` - Development/staging dataset
+- `acuantia.ods_prod` - Production staging dataset
 
-### 1. Always Use `--schema-suffix dev` for Testing
+**CRITICAL**: Use two-argument ref() for ODS tables to avoid suffix duplication:
 
-```bash
-# WRONG: Testing in production
-dataform run --actions my_table
-
-# CORRECT: Test in dev first
-dataform run --schema-suffix dev --actions my_table
-```
-
-**Why**: Writes to `looker_dev.my_table` instead of `looker_prod.my_table`. Allows safe testing without impacting production data or dashboards.
-
-### 2. Always Use `--dry-run` Before Execution
-
-```bash
-# Check compilation
-dataform compile
-
-# Validate SQL without executing
-dataform run --schema-suffix dev --dry-run --actions my_table
-
-# Only then execute
-dataform run --schema-suffix dev --actions my_table
-```
-
-**Why**: Catches SQL errors, missing dependencies, and cost estimation before using BigQuery slots.
-
-### 3. Source Declarations Before ref()
-
-**WRONG**: Using tables without source declarations
 ```sql
--- This will break dependency tracking
-FROM `acuantia.callrail_api.calls`
-```
-
-**CORRECT**: Create source declaration first
-```sql
--- definitions/sources/callrail/calls.sqlx
-config {
-  type: "declaration",
-  database: "acuantia",
-  schema: "callrail_api",
-  name: "calls"
-}
-
--- Then reference it
-FROM ${ref("calls")}
-```
-
-### 4. ALWAYS Use ${ref()} - NEVER Hardcoded Table Paths
-
-**WRONG**: Hardcoded table paths
-```sql
--- NEVER do this
-FROM `acuantia.dialpad_api.calls`
-FROM `acuantia.looker_prod.customer_metrics`
-SELECT * FROM acuantia.ods.sap_customers
-```
-
-**CORRECT**: Always use ${ref()}
-```sql
--- Create source declaration first, then reference
-FROM ${ref("calls")}
-FROM ${ref("customer_metrics")}
-SELECT * FROM ${ref("sap_customers")}
-```
-
-**Why**:
-- Dataform tracks dependencies automatically with ref()
-- Hardcoded paths break dependency graphs
-- ref() enables --schema-suffix to work correctly
-- Refactoring is easier when references are managed
-
-**Exception**: None. There is NO valid reason to use hardcoded table paths in SQLX files.
-
-### 5. Proper ref() Syntax
-
-**WRONG**: Including schema in ref() for most tables
-```sql
-FROM ${ref("magento_rotoplas_me_22_prod", "sales_order")}
-```
-
-**CORRECT**: Use single argument when source declared
-```sql
-FROM ${ref("sales_order")}
-```
-
-**SPECIAL CASE - ODS Tables**: Use two-argument ref() for ODS to avoid suffix duplication
-```sql
--- Correct for ODS tables
+-- CORRECT: Two-argument ref() for ODS
 FROM ${ref("ods", "sap_customers")}
--- NOT ${ref("sap_customers")} - this would create ods_dev_dev with --schema-suffix dev
+FROM ${ref("ods", "magento_orders")}
+
+-- WRONG: Single-argument causes ods_dev_dev with --schema-suffix dev
+FROM ${ref("sap_customers")}  -- Creates ods_dev_dev ❌
 ```
 
-**Why**:
-- Single-argument ref() works for most tables
-- Two-argument ref() needed for ODS architecture (prevents ods_dev_dev)
-- ODS is special: `acuantia.ods` is source of truth, `ods_dev`/`ods_prod` are staging
+**Why**: The ODS schema name itself gets the suffix applied. Two-argument ref() prevents `ods_dev_dev` when using `--schema-suffix dev`.
 
-### 6. Basic Validation Queries
+**All other tables**: Use single-argument ref() as per `dataform-engineering-fundamentals`.
 
-Always verify your output:
-```bash
-# Check row counts
-bq query --use_legacy_sql=false \
-  "SELECT COUNT(*) FROM \`acuantia.looker_dev.my_table\`"
+### 2. Looker Table Naming Convention
 
-# Check for nulls in critical fields
-bq query --use_legacy_sql=false \
-  "SELECT COUNT(*) FROM \`acuantia.looker_dev.my_table\`
-   WHERE key_field IS NULL"
+Tables in `definitions/output/looker/` MUST be prefixed with `looker_`.
+
+**File naming**:
+```
+definitions/output/looker/looker_customer_metrics.sqlx  ✅
+definitions/output/looker/looker_sales_summary.sqlx     ✅
+definitions/output/looker/customer_metrics.sqlx         ❌
 ```
 
-**Why**: Catches silent failures (empty tables, null values, bad joins) immediately.
-
-## Architecture Patterns (Not Optional)
-
-Even for "quick" work, follow these patterns:
-
-### Layered Structure
-
-```
-definitions/
-  sources/          # External data declarations
-  intermediate/     # Transformations and business logic
-  output/           # Final tables for consumption
-    looker/         # Looker-specific views
-    reports/        # Ad-hoc reports
-```
-
-**Don't**: Create monolithic queries directly in output layer
-
-**Do**: Break into intermediate steps for reusability and testing
-
-### Incremental vs Full Refresh
-
-```sql
-config {
-  type: "incremental",
-  uniqueKey: "order_id",
-  bigquery: {
-    partitionBy: "DATE(order_date)",
-    clusterBy: ["customer_id", "product_id"]
-  }
-}
-```
-
-**When to use incremental**: Tables that grow daily (events, transactions, logs)
-
-**When to use full refresh**: Small dimension tables, aggregations with lookback windows
-
-### Dataform Assertions
-
+**Schema configuration**:
 ```sql
 config {
   type: "table",
-  assertions: {
-    uniqueKey: ["call_id"],
-    nonNull: ["customer_phone_number", "start_time"],
-    rowConditions: ["duration >= 0"]
-  }
+  schema: "looker_prod",  // Production Looker tables
+  tags: ["looker", "daily"]
 }
 ```
 
-**Why**: Catches data quality issues automatically during pipeline runs.
+**Why**:
+- Makes Looker-specific tables immediately identifiable
+- Prevents naming conflicts with intermediate tables
+- Aligns with Looker project conventions in `looker/` directory
 
-### Source Declarations: Prefer .sqlx Files
+### 3. Acuantia Dataset Conventions
 
-**STRONGLY PREFER**: .sqlx files for ALL new declarations
-```sql
--- definitions/sources/callrail/calls.sqlx
-config {
-  type: "declaration",
-  database: "acuantia",
-  schema: "callrail_api",
-  name: "calls",
-  columns: {
-    call_id: "Unique call identifier from Dialpad API",
-    // ... more columns
-  }
-}
+**Primary Datasets**:
+- `acuantia.ods` - Master operational data store (source of truth)
+- `acuantia.ods_dev` / `acuantia.ods_prod` - ODS staging datasets
+- `acuantia.looker_prod` - Production Looker tables
+- `acuantia.looker_dev` - Development Looker tables
+- `acuantia.dataform` - Operations and temp tables
+- `acuantia.callrail_api` - CallRail raw data
+- `acuantia.dialpad_api` - Dialpad raw data
+- `acuantia.hubspot` - HubSpot data (via Fivetran)
+- `acuantia.magento_rotoplas_me_22_prod` - Magento/Adobe Commerce data (via Fivetran)
+
+**Schema suffix behavior**:
+```bash
+# With --schema-suffix dev
+looker_prod → looker_dev
+ods → ods (no suffix, use two-arg ref)
+dataform → dataform_dev
 ```
 
-**ACCEPTABLE (legacy only)**: .js files for existing declarations
-```javascript
-// definitions/sources/ods_declarations.js (existing file)
-declare({
-  database: "acuantia",
-  schema: "ods",
-  name: "sap_customers"
-});
-```
+### 4. Looker Integration Context
 
-**Rule**: ALL NEW source declarations MUST be .sqlx files. Existing .js declarations can remain but should be migrated to .sqlx when modifying them.
+Tables in `definitions/output/looker/` feed Acuantia's Looker instance at https://looker.acuantia.com.
 
-**Why**: .sqlx files support column documentation, are more maintainable, and integrate better with Dataform's dependency tracking.
-
-### File Naming Conventions
-
-**Looker Tables**: All files in `definitions/output/looker/` MUST be prefixed with `looker_`
-
-```sql
--- CORRECT
-definitions/output/looker/looker_customer_metrics.sqlx
-definitions/output/looker/looker_sales_summary.sqlx
-
--- WRONG
-definitions/output/looker/customer_metrics.sqlx
-definitions/output/looker/sales_summary.sqlx
-```
-
-**Why**: Makes it easy to identify Looker-specific tables and prevents naming conflicts.
-
-### Schema Configuration Rules
-
-**Operations**: Files in `definitions/operations/` should NOT include `schema:` config
-```sql
--- CORRECT
-config {
-  type: "operations",
-  tags: ["daily"]
-}
-
--- WRONG
-config {
-  type: "operations",
-  schema: "dataform",  // DON'T specify schema
-  tags: ["daily"]
-}
-```
-
-**Tests/Assertions**: Files in `definitions/test/` should NOT include `schema:` config
-```sql
--- CORRECT
-config {
-  type: "assertion",
-  description: "Check for duplicates"
-}
-
--- WRONG
-config {
-  type: "assertion",
-  schema: "dataform_assertions",  // DON'T specify schema
-  description: "Check for duplicates"
-}
-```
-
-**Why**: Operations live in the default `dataform` schema and assertions live in `dataform_assertions` schema (configured in `workflow_settings.yaml`). Specifying schema explicitly can cause conflicts.
-
-### Looker Integration Context
-
-Tables in `definitions/output/looker/` are consumed by the Google Looker reporting system.
-
-**Key considerations**:
-- Add partitioning/clustering for query performance
+**Optimization requirements**:
+- Add partitioning/clustering for query performance (Looker users run ad-hoc queries)
 - Use descriptive column names (Looker dimension names derive from these)
-- Include comprehensive column descriptions (sync to Looker metadata)
-- Consider Looker user query patterns when designing schema
-- Reference the `looker/` project directory for existing dashboard patterns
+- Include comprehensive column descriptions (synced to Looker metadata via scripts)
+- Consider common Looker user query patterns (filters, aggregations)
 
-**Example Looker-optimized config**:
+**Looker-specific config pattern**:
 ```sql
 config {
   type: "table",
@@ -308,72 +124,33 @@ config {
   bigquery: {
     partitionBy: "DATE(order_date)",
     clusterBy: ["customer_id", "region"]
-  }
-}
-```
-
-## Documentation Standards (Non-Negotiable)
-
-All tables with `type: "table"` MUST include comprehensive `columns: {}` documentation in the config block.
-
-### columns: {} Requirement
-
-**WRONG**: Table without column documentation
-```sql
-config {
-  type: "table",
-  schema: "looker_prod"
-}
-
-SELECT customer_id, total_revenue FROM ${ref("orders")}
-```
-
-**CORRECT**: Complete column documentation
-```sql
-config {
-  type: "table",
-  schema: "looker_prod",
+  },
   columns: {
     customer_id: "Unique customer identifier from SAP (KUNNR field)",
-    total_revenue: "Sum of all order amounts in USD, excluding refunds"
-  }
-}
-
-SELECT customer_id, total_revenue FROM ${ref("orders")}
-```
-
-### Where to Get Column Descriptions
-
-Column descriptions should be derived from:
-
-1. **Source Declarations**: Copy descriptions from upstream source tables
-2. **Third-party Documentation**:
-   - SAP: Use publicly available SAP field documentation (e.g., KUNNR = Customer Number)
-   - Dialpad: Use Dialpad API documentation for field definitions
-   - HubSpot: Use HubSpot API docs for property descriptions
-   - Magento/Adobe Commerce: Use Adobe Commerce schema documentation
-3. **Business Logic**: Document calculated fields, transformations, and business rules
-4. **Looker Requirements**: Include context that Looker dashboard builders need
-
-**Example with SAP source documentation**:
-```sql
-config {
-  type: "table",
-  schema: "looker_prod",
-  columns: {
-    customer_id: "SAP Customer Number (KUNNR) - unique identifier in SAP ERP",
-    customer_name: "Customer name (NAME1 field) - legal business name",
-    account_group: "Customer Account Group (KTOKD) - classification code",
-    credit_limit: "Credit limit in USD (KLIMK field) - maximum allowed credit"
+    order_date: "Date when order was placed",
+    region: "Geographic region for reporting (matches Looker region dimension)"
   }
 }
 ```
 
-### Source Declarations Should Include columns: {}
+**Metadata sync**: Use `node scripts/updateLookerDescriptions.js` in `acuantia-gcp-dataform` to sync column descriptions to Looker views.
 
-When applicable, source declarations should also document columns:
+### 5. Source System Integration
 
+Acuantia integrates data from multiple source systems. Use specific terminology when documenting columns:
+
+**SAP ERP**:
 ```sql
+columns: {
+  customer_id: "SAP Customer Number (KUNNR) - unique identifier in SAP ERP",
+  customer_name: "Customer name (NAME1 field) - legal business name",
+  account_group: "Customer Account Group (KTOKD) - classification code"
+}
+```
+
+**Dialpad API** (from `dialpad_data_integration` project):
+```sql
+-- Source declaration
 -- definitions/sources/dialpad/calls.sqlx
 config {
   type: "declaration",
@@ -383,331 +160,197 @@ config {
   description: "Dialpad call records with transcripts and sentiment analysis",
   columns: {
     call_id: "Unique call identifier from Dialpad API",
-    external_number: "Customer phone number that originated or received the call",
-    duration: "Call duration in seconds",
-    start_time: "UTC timestamp when call started",
     transcript: "Full call transcript from Dialpad AI",
-    sentiment: "Overall call sentiment: positive/negative/neutral/mixed",
-    sentiment_score: "Sentiment confidence score (0.0 to 1.0)"
+    sentiment: "Overall call sentiment: positive/negative/neutral/mixed"
   }
 }
 ```
 
-**Why document sources**: Downstream tables inherit and extend these descriptions, creating documentation consistency across the pipeline.
-
-## Test-Driven Development (TDD) Workflow
-
-**REQUIRED BACKGROUND:** You MUST understand and follow superpowers:test-driven-development
-
-**BEFORE TDD:** When creating NEW features with unclear requirements, use superpowers:brainstorming FIRST to refine rough ideas into clear designs. Only start TDD once you have a clear understanding of what needs to be built.
-
-When creating NEW features or tables in Dataform, apply the TDD cycle:
-
-1. **RED**: Write tests first, watch them fail
-2. **GREEN**: Write minimal code to make tests pass
-3. **REFACTOR**: Clean up while keeping tests passing
-
-The superpowers:test-driven-development skill provides the foundational TDD principles. This section adapts those principles specifically for Dataform tables and SQLX files.
-
-### TDD for Dataform Tables
-
-**WRONG: Implementation-first approach**
-```
-1. Write SQLX transformation
-2. Test manually with bq query
-3. "It works, ship it"
+**CallRail API** (from `callrail_data_export` project):
+```sql
+-- Source declaration
+-- definitions/sources/callrail/calls.sqlx
+config {
+  type: "declaration",
+  database: "acuantia",
+  schema: "callrail_api",
+  name: "calls",
+  columns: {
+    call_id: "Unique CallRail call identifier",
+    tracking_phone_number: "CallRail tracking number that received the call",
+    attribution: "Nested attribution data (source, medium, campaign)"
+  }
+}
 ```
 
-**CORRECT: Test-first approach**
-```
-1. Write data quality assertions first
-2. Write unit tests for business logic
-3. Run tests - they should FAIL (table doesn't exist yet)
-4. Write SQLX transformation
-5. Run tests - they should PASS
-6. Refactor transformation if needed
-```
-
-### Example TDD Workflow
-
-**Step 1: Write assertions first** (definitions/assertions/assert_customer_metrics.sqlx)
+**HubSpot CRM** (via Fivetran):
 ```sql
 config {
-  type: "assertion",
-  description: "Customer metrics must have valid data"
+  type: "declaration",
+  database: "acuantia",
+  schema: "hubspot",
+  name: "contact"
 }
-
--- This WILL fail initially (table doesn't exist)
-SELECT 'Duplicate customer_id' AS test
-FROM ${ref("customer_metrics")}
-GROUP BY customer_id
-HAVING COUNT(*) > 1
-
-UNION ALL
-
-SELECT 'Negative lifetime value' AS test
-FROM ${ref("customer_metrics")}
-WHERE lifetime_value < 0
 ```
 
-**Step 2: Run tests - watch them fail**
-```bash
-dataform run --schema-suffix dev --run-tests --actions assert_customer_metrics
-# ERROR: Table customer_metrics does not exist ✓ EXPECTED
-```
-
-**Step 3: Write minimal implementation** (definitions/output/looker/customer_metrics.sqlx)
+**Magento/Adobe Commerce** (via Fivetran):
 ```sql
+config {
+  type: "declaration",
+  database: "acuantia",
+  schema: "magento_rotoplas_me_22_prod",
+  name: "sales_order"
+}
+```
+
+### 6. Cross-Project Coordination
+
+Acuantia's data platform spans multiple projects that work together:
+
+```
+callrail_data_export/          → acuantia.callrail_api.*
+dialpad_data_integration/      → acuantia.dialpad_api.*
+acuantia-gcp-dataform/         → Transform and model
+looker/                        → Visualize and report
+```
+
+**When modifying schemas**:
+1. **Source changes** (callrail_data_export or dialpad_data_integration):
+   - Update Python schema definitions
+   - Test with small data exports
+   - Deploy to production
+
+2. **Dataform updates** (acuantia-gcp-dataform):
+   - Update source declarations in `definitions/sources/`
+   - Modify transformations if needed
+   - Update `definitions/output/looker/` tables
+   - Test with `--schema-suffix dev`
+
+3. **Looker updates** (looker project):
+   - Update view definitions
+   - Add new dimensions/measures
+   - Test in development environment
+
+**Schema change protocol**: Always coordinate changes across all three layers (raw → transformed → visualization).
+
+### 7. Business Context
+
+Acuantia serves four main product verticals:
+- **Septic**: Septic tank systems
+- **General**: General purpose containers
+- **Industrial**: Industrial containers and equipment
+- **Chemical**: Chemical storage containers
+
+**Key business entities**:
+- TankHolding: Key business vertical with specialized recovery operations
+- Customer Journey: Multi-touch attribution across CallRail, HubSpot, and Magento
+- Voice of Customer (VoC): Dialpad call transcripts analyzed for sentiment and topics
+
+**When creating tables**, consider how they support these business verticals and use cases.
+
+## Validation Queries (Acuantia-Specific)
+
+```bash
+# Check Looker dev tables
+bq query --use_legacy_sql=false \
+  "SELECT COUNT(*) FROM \`acuantia.looker_dev.looker_customer_metrics\`"
+
+# Check ODS tables
+bq query --use_legacy_sql=false \
+  "SELECT COUNT(*) FROM \`acuantia.ods.sap_customers\`"
+
+# Verify CallRail data freshness
+bq query --use_legacy_sql=false \
+  "SELECT MAX(start_time) FROM \`acuantia.callrail_api.calls\`"
+
+# Verify Dialpad data freshness
+bq query --use_legacy_sql=false \
+  "SELECT MAX(start_time) FROM \`acuantia.dialpad_api.calls\`"
+```
+
+## Common Acuantia-Specific Mistakes
+
+### Mistake 1: Using single-argument ref() for ODS tables
+
+```sql
+-- WRONG: Creates ods_dev_dev with --schema-suffix dev
+FROM ${ref("sap_customers")}
+
+-- CORRECT: Two-argument ref() for ODS
+FROM ${ref("ods", "sap_customers")}
+```
+
+### Mistake 2: Missing looker_ prefix
+
+```
+# WRONG
+definitions/output/looker/customer_metrics.sqlx
+
+# CORRECT
+definitions/output/looker/looker_customer_metrics.sqlx
+```
+
+### Mistake 3: Using wrong schema for Looker tables
+
+```sql
+-- WRONG
 config {
   type: "table",
-  schema: "looker_prod",
-  columns: {
-    customer_id: "Unique customer identifier",
-    lifetime_value: "Total revenue from customer in USD"
-  }
+  schema: "reporting"  // Not Looker-specific
 }
 
-SELECT
-  customer_id,
-  SUM(order_total) AS lifetime_value
-FROM ${ref("orders")}
-GROUP BY customer_id
+-- CORRECT
+config {
+  type: "table",
+  schema: "looker_prod"  // Consumed by Looker
+}
 ```
 
-**Step 4: Run tests - watch them pass**
-```bash
-dataform run --schema-suffix dev --actions customer_metrics
-dataform run --schema-suffix dev --run-tests --actions assert_customer_metrics
-# No rows returned ✓ TESTS PASS
+### Mistake 4: Hardcoding acuantia.ods in queries
+
+```sql
+-- WRONG: Hardcoded path
+FROM `acuantia.ods.sap_customers`
+
+-- CORRECT: Use two-argument ref()
+FROM ${ref("ods", "sap_customers")}
 ```
 
-### Why TDD Matters in Dataform
+## Red Flags - Acuantia-Specific
 
-- **Catches bugs before production**: Tests fail when logic is wrong
-- **Documents expected behavior**: Tests show what the table should do
-- **Prevents regressions**: Future changes won't break existing logic
-- **Faster debugging**: Test failures pinpoint exact issues
-- **Confidence in refactoring**: Change code safely with test coverage
+If you're thinking any of these thoughts, STOP:
 
-### TDD Red Flags
+- "I'll use single-argument ref() for ODS tables (it's simpler)"
+- "I don't need the looker_ prefix for this Looker table"
+- "I'll use a different schema name instead of looker_prod"
+- "I'll skip coordinating with the looker/ project team"
+- "I don't need to check CallRail/Dialpad data freshness"
 
-If you're thinking:
-- "I'll write tests after the implementation" → **NO, write tests FIRST**
-- "Tests are overkill for this simple table" → **NO, simple tables break too**
-- "I'll test manually with bq query" → **NO, manual tests aren't repeatable**
-- "Tests after achieve the same result" → **NO, tests-first catches design flaws**
-
-**All of these mean**: You're skipping TDD. Write tests first, then implementation.
-
-**See also**: The superpowers:test-driven-development skill contains additional TDD rationalizations and red flags that apply universally to all code, including Dataform SQLX files.
+**All of these mean**: You're about to break Acuantia conventions. Follow the patterns above.
 
 ## Quick Reference
 
-| Task | Command | Notes |
-|------|---------|-------|
-| Compile only | `dataform compile` | Check syntax, no BigQuery execution |
-| Dry run | `dataform run --schema-suffix dev --dry-run --actions table_name` | Validate SQL, estimate cost |
-| Test in dev | `dataform run --schema-suffix dev --actions table_name` | Safe execution in dev environment |
-| Run with dependencies | `dataform run --schema-suffix dev --include-deps --actions table_name` | Run upstream dependencies first |
-| Run by tag | `dataform run --schema-suffix dev --tags looker` | Run all tables with tag |
-| Production deploy | `dataform run --actions table_name` | Only after dev testing succeeds |
+| Pattern | Acuantia Convention |
+|---------|---------------------|
+| ODS tables | Two-argument ref(): `${ref("ods", "table_name")}` |
+| Looker tables | Prefix with `looker_` and use `schema: "looker_prod"` |
+| CallRail data | `acuantia.callrail_api.*` |
+| Dialpad data | `acuantia.dialpad_api.*` |
+| HubSpot data | `acuantia.hubspot.*` |
+| Magento data | `acuantia.magento_rotoplas_me_22_prod.*` |
+| Dev testing | `--schema-suffix dev` (see dataform-engineering-fundamentals) |
+| Looker metadata | Run `node scripts/updateLookerDescriptions.js` |
 
-## Common Rationalizations (And Why They're Wrong)
+## Summary
 
-| Excuse | Reality | Fix |
-|--------|---------|-----|
-| "Too urgent to test in dev" | Production failures waste MORE time than dev testing | 3 minutes testing saves 60 minutes debugging |
-| "It's just a quick report" | "Quick" reports become permanent tables | Use proper architecture from start |
-| "Business is waiting" | Broken output wastes stakeholder time | Correct results delivered 10 minutes later > wrong results now |
-| "Hardcoding table path is faster than ${ref()}" | Breaks dependency tracking, creates maintenance nightmare | Create source declaration, use ${ref()} (30 seconds) |
-| "I'll refactor it later" | Technical debt rarely gets fixed | Do it right the first time (saves time overall) |
-| "Correctness over elegance" | Architecture = maintainability, not elegance | Proper structure IS correctness |
-| "I'll add tests after" | After = never | Write tests FIRST (TDD), then implementation |
-| "I'll add documentation after" | After = never | Add columns: {} in config block immediately |
-| "Looker prefix isn't necessary" | Causes naming conflicts and confusion | Always prefix Looker tables with looker_ |
-| "Working late, just need it working" | Exhaustion causes mistakes | Discipline matters MORE when tired |
-| "Column docs are optional for internal tables" | All tables become external eventually | Document everything, always |
-| "Tests after achieve same result" | Tests-after = checking what it does; tests-first = defining what it should do | TDD catches design flaws early |
+This skill adds **only Acuantia-specific patterns**. For all generic Dataform practices:
+- TDD workflow
+- Safety practices
+- ${ref()} enforcement (general cases)
+- Documentation standards
+- Architecture patterns
+- Troubleshooting
 
-## Red Flags - STOP Immediately
+**→ See `dataform-engineering-fundamentals` skill.**
 
-If you're thinking any of these thoughts, STOP and follow the skill:
-
-- "I'll skip `--schema-suffix dev` this once"
-- "No time for `--dry-run`"
-- "I'll just hardcode the table path instead of using ${ref()}"
-- "I'll use backticks instead of ${ref()} (it's faster)"
-- "I'll just create one file instead of intermediate layers"
-- "Tests are optional for ad-hoc work"
-- "I'll write tests after the implementation"
-- "I'll add column documentation later"
-- "This table doesn't need columns: {} block"
-- "I'll use a .js file for declarations (faster to write)"
-- "I don't need to prefix this Looker table with looker_"
-- "I'll add schema: config to this operation/test file"
-- "I'll fix the technical debt later"
-- "This is different because [business reason]"
-
-**All of these mean**: You're about to create problems. Follow the non-negotiable practices.
-
-## Common Mistakes
-
-### Mistake 1: Using tables before declaring sources
-
-```sql
--- WRONG: Direct table reference
-FROM `acuantia.hubspot.contact`
-
--- CORRECT: Declare source first
-FROM ${ref("contact")}
-```
-
-**Fix**: Create source declaration in `definitions/sources/` before using in queries.
-
-### Mistake 2: Mixing ref() with manual schema qualification
-
-```sql
--- WRONG: When source exists
-FROM ${ref("dataset_name", "table_name")}
-
--- CORRECT
-FROM ${ref("table_name")}
-```
-
-**Fix**: Use single-argument `ref()` when source declaration exists. Dataform handles full path resolution.
-
-### Mistake 3: Skipping dev testing under pressure
-
-**Symptom**: "I'll deploy directly to production because it's urgent"
-
-**Fix**: `--schema-suffix dev` takes 30 seconds longer than production deploy. Production failures take hours to fix.
-
-### Mistake 4: Creating monolithic transformations
-
-**Symptom**: 200-line SQLX file with 5 CTEs doing multiple transformations
-
-**Fix**: Break into intermediate tables. Each table should do ONE transformation clearly.
-
-### Mistake 5: Missing columns: {} documentation
-
-**Symptom**: Table config without column descriptions
-
-**Fix**: Add comprehensive `columns: {}` block to EVERY table with `type: "table"`. Get descriptions from source docs, upstream tables, or business logic.
-
-### Mistake 6: Writing implementation before tests
-
-**Symptom**: Creating SQLX file, then adding assertions afterward (or never)
-
-**Fix**: Follow TDD cycle - write assertions first, watch them fail, write implementation, watch tests pass.
-
-### Mistake 7: Using .js files for NEW source declarations
-
-**Symptom**: Creating NEW `definitions/sources/sources.js` files with declare() functions
-
-**Fix**: Create .sqlx files in `definitions/sources/[system]/[table].sqlx` with proper config blocks and column documentation. Existing .js files can remain until they need modification.
-
-### Mistake 8: Hardcoded table paths instead of ${ref()}
-
-**Symptom**: Using backtick-quoted table paths in queries
-```sql
-FROM `acuantia.dialpad_api.calls`
-SELECT * FROM acuantia.ods.sap_customers
-```
-
-**Fix**: ALWAYS use ${ref()} after creating source declarations
-```sql
-FROM ${ref("calls")}
-SELECT * FROM ${ref("ods", "sap_customers")}
-```
-
-**Why critical**: Hardcoded paths break dependency tracking, prevent --schema-suffix from working, and make refactoring impossible.
-
-### Mistake 9: Missing looker_ prefix for Looker tables
-
-**Symptom**: File in `definitions/output/looker/` without looker_ prefix
-```
-definitions/output/looker/customer_metrics.sqlx  ❌
-```
-
-**Fix**: Add looker_ prefix to filename
-```
-definitions/output/looker/looker_customer_metrics.sqlx  ✅
-```
-
-### Mistake 10: Adding schema: config to operations or tests
-
-**Symptom**: Operations or test files with explicit schema configuration
-```sql
-config {
-  type: "operations",
-  schema: "dataform",  // Wrong!
-}
-```
-
-**Fix**: Remove schema: config - operations and tests use default schemas from workflow_settings.yaml
-
-## Time Pressure Protocol
-
-When under extreme time pressure (board meeting in 2 hours, production down, stakeholder waiting):
-
-1. ✅ **Still use dev testing** - 3 minutes saves 60 minutes debugging
-2. ✅ **Still use --dry-run** - Catches errors before wasting BigQuery slots
-3. ✅ **Still create source declarations** - Broken dependencies waste MORE time
-4. ✅ **Still add columns: {} documentation** - Takes 2 minutes, saves hours explaining to Looker users
-5. ✅ **Still write tests first (TDD)** - 5 minutes writing assertions prevents production bugs
-6. ✅ **Still do basic validation** - Wrong results are worse than delayed results
-7. ⚠️ **Can skip**: Extensive documentation files, peer review, performance optimization
-8. ⚠️ **Must document**: Tag as "technical_debt", create TODO with follow-up tasks
-
-**The bottom line**: Safety practices save time. Skipping them wastes time. Even under pressure.
-
-## Troubleshooting Dataform Errors
-
-**RECOMMENDED APPROACH:** When encountering ANY bug, test failure, or unexpected behavior, use superpowers:systematic-debugging before attempting fixes. For errors deep in execution or cascading failures, use superpowers:root-cause-tracing to identify the original trigger.
-
-### "Table not found" errors
-
-**Quick fixes:**
-1. Check source declaration exists in `definitions/sources/`
-2. Verify ref() syntax (single argument if source exists)
-3. Check schema/database match in source config
-4. Run `dataform compile` to see resolved SQL
-
-**If issue persists:** Use superpowers:systematic-debugging for structured root cause investigation.
-
-### Dependency cycle errors
-
-**Quick fixes:**
-1. Use `${ref("table_name")}` not direct table references
-2. Check for circular dependencies (A → B → A)
-3. Review dependency graph in Dataform UI
-
-**If issue persists:** Use superpowers:root-cause-tracing to trace the dependency chain back to the source of the cycle.
-
-### Timeout errors
-
-**Quick fixes:**
-1. Add partitioning/clustering to config
-2. Use incremental updates instead of full refresh
-3. Break large transformations into smaller intermediate tables
-
-**If issue persists:** Use superpowers:systematic-debugging to investigate query performance systematically.
-
-## Real-World Impact
-
-**Scenario**: "Quick" report created without source declarations, skipping dev testing.
-
-**Cost**:
-- 10 minutes saved initially
-- 2 hours debugging "table not found" errors in production
-- 3 stakeholder escalations
-- 1 broken morning dashboard
-- Net loss: 110 minutes
-
-**With proper practices**:
-- 13 minutes total (3 extra for dev testing)
-- Zero production issues
-- Zero escalations
-- Net gain: 97 minutes
-
-**Takeaway**: Discipline is faster than shortcuts.
+The patterns in this skill (ODS two-arg ref, looker_ prefix, Acuantia datasets, cross-project coordination) are **required additions** to the generic foundation, not replacements.
