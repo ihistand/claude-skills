@@ -44,6 +44,8 @@ description: Brief description used by skill selection system
 - Document common mistakes and correct patterns side-by-side
 - Reference related skills for workflow chains
 
+**Working with Claude Code Features**: When developing skills that integrate with Claude Code's CLI, plugins, hooks, MCP servers, or configuration, use `superpowers-developing-for-claude-code:working-with-claude-code` for comprehensive official documentation.
+
 ### Testing Skills (Critical)
 
 Skills MUST be tested before deployment using the `superpowers:testing-skills-with-subagents` workflow:
@@ -137,6 +139,8 @@ Before submitting:
 - **Superpowers installation**: See `../.codex_INSTALL.md` for Codex setup instructions
 - **Skill writing guide**: Use `superpowers:writing-skills` skill
 - **Skill testing guide**: Use `superpowers:testing-skills-with-subagents` skill
+- **Claude Code development**: Use `superpowers-developing-for-claude-code:working-with-claude-code` for comprehensive documentation on Claude Code CLI, plugins, hooks, MCP servers, skills, and configuration
+- **Plugin development**: Use `superpowers-developing-for-claude-code:developing-claude-code-plugins` when creating, modifying, testing, or releasing Claude Code plugins
 
 ## Key Commands
 

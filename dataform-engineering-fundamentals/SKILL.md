@@ -11,6 +11,10 @@ description: Use when developing BigQuery Dataform transformations, SQLX files, 
 
 **REQUIRED FOUNDATION:** This skill builds upon superpowers:test-driven-development. All TDD principles from that skill apply to Dataform development. This skill adapts TDD specifically for BigQuery Dataform SQLX files.
 
+**Official Documentation:** For Dataform syntax, configuration options, and API reference, see https://cloud.google.com/dataform/docs
+
+**Best Practices Guide:** For repository structure, naming conventions, and managing large workflows, see https://cloud.google.com/dataform/docs/best-practices-repositories
+
 Time pressure does not justify skipping safety checks or creating technical debt. The time "saved" by shortcuts gets multiplied into hours of debugging, broken dependencies, and production issues.
 
 ## When to Use
@@ -32,6 +36,7 @@ Use this skill for ANY Dataform work:
 - **Before designing new features**: Use superpowers:brainstorming to refine requirements into clear designs before writing any code
 - **When troubleshooting failures**: Use superpowers:systematic-debugging for structured problem-solving
 - **When debugging complex issues**: Use superpowers:root-cause-tracing to trace errors back to their source
+- **When writing documentation, commit messages, or any prose**: Use elements-of-style:writing-clearly-and-concisely to apply Strunk's timeless writing rules for clarity and conciseness
 
 ## Non-Negotiable Safety Practices
 
@@ -154,6 +159,8 @@ bq query --use_legacy_sql=false \
 
 Even for "quick" work, follow these patterns:
 
+**Reference:** For detailed guidance on repository structure, naming conventions, and managing large workflows, see https://cloud.google.com/dataform/docs/best-practices-repositories
+
 ### Layered Structure
 
 ```
@@ -272,6 +279,8 @@ config {
 
 All tables with `type: "table"` MUST include comprehensive `columns: {}` documentation in the config block.
 
+**Writing Clear Documentation**: When writing column descriptions, commit messages, or any prose that humans will read, use elements-of-style:writing-clearly-and-concisely to ensure clarity and conciseness.
+
 ### columns: {} Requirement
 
 **WRONG**: Table without column documentation
@@ -306,6 +315,7 @@ Column descriptions should be derived from:
 2. **Third-party Documentation**: Use official API documentation for external systems (CRM, ERP, analytics platforms)
 3. **Business Logic**: Document calculated fields, transformations, and business rules
 4. **BI Tool Requirements**: Include context that dashboard builders and analysts need
+5. **Dataform Documentation**: Reference https://cloud.google.com/dataform/docs for Dataform-specific configuration and built-in functions
 
 **Example with ERP source documentation**:
 ```sql
@@ -600,6 +610,8 @@ When under extreme time pressure (board meeting in 2 hours, production down, sta
 ## Troubleshooting Dataform Errors
 
 **RECOMMENDED APPROACH:** When encountering ANY bug, test failure, or unexpected behavior, use superpowers:systematic-debugging before attempting fixes. For errors deep in execution or cascading failures, use superpowers:root-cause-tracing to identify the original trigger.
+
+**Official Reference:** For Dataform-specific errors, configuration issues, or syntax questions, consult https://cloud.google.com/dataform/docs
 
 ### "Table not found" errors
 
