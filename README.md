@@ -36,9 +36,8 @@ A comprehensive skill for BigQuery Dataform development that adapts TDD principl
 claude-skills/
 ├── README.md                                  # This file
 ├── CLAUDE.md                                  # Development guide for Claude Code
-├── dataform-engineering-fundamentals/
-│   ├── SKILL.md                              # Complete skill definition
-│   └── PR_DESCRIPTION.md                     # Pull request documentation
+└── dataform-engineering-fundamentals/
+    └── SKILL.md                              # Complete skill definition
 ```
 
 ## Development Workflow
@@ -68,8 +67,6 @@ claude-skills/
    - GREEN phase: Write skill addressing failures
    - REFACTOR phase: Test WITH skill to verify effectiveness
 
-4. **Document testing** in PR_DESCRIPTION.md
-
 ### Contributing Upstream
 
 When ready to contribute to the main [superpowers repository](https://github.com/obra/superpowers):
@@ -80,7 +77,7 @@ cd ~/.claude/plugins/cache/superpowers
 gh pr create \
   --repo obra/superpowers \
   --title "Add [skill-name] skill" \
-  --body-file ~/path/to/PR_DESCRIPTION.md
+  --body "Brief description of the skill and its purpose"
 ```
 
 ## Skill Development Principles
