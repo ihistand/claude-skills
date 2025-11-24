@@ -74,8 +74,6 @@ claude-skills/
    - GREEN phase: Write skill addressing failures
    - REFACTOR phase: Test WITH skill to verify effectiveness
 
-4. **Document testing** in PR_DESCRIPTION.md
-
 ### Contributing Upstream
 
 When ready to contribute to the main [superpowers repository](https://github.com/obra/superpowers):
@@ -86,7 +84,7 @@ cd ~/.claude/plugins/cache/superpowers
 gh pr create \
   --repo obra/superpowers \
   --title "Add [skill-name] skill" \
-  --body-file ~/path/to/PR_DESCRIPTION.md
+  --body "Brief description of the skill and its purpose"
 ```
 
 ## Skill Development Principles
