@@ -39,6 +39,12 @@ claude-skills/
 ├── dataform-engineering-fundamentals/
 │   ├── SKILL.md                              # Complete skill definition
 │   └── PR_DESCRIPTION.md                     # Pull request documentation
+├── acuantia-dataform/
+│   └── SKILL.md                              # Acuantia-specific Dataform patterns
+└── stl-generator/
+    ├── SKILL.md                              # 3D printable jig generator skill
+    ├── references/                            # Design guidelines and patterns
+    └── scripts/                               # Pre-built CadQuery scripts
 ```
 
 ## Development Workflow
@@ -116,6 +122,7 @@ Before submitting:
 |-------|-------------|--------|
 | [dataform-engineering-fundamentals](dataform-engineering-fundamentals/) | Generic BigQuery Dataform TDD workflow enforcement (suitable for upstream contribution) | ✅ Complete |
 | [acuantia-dataform](acuantia-dataform/) | Acuantia-specific Dataform patterns (extends dataform-engineering-fundamentals with ODS, Looker integration, dataset conventions) | ✅ Complete |
+| [stl-generator](stl-generator/) | Generate 3D printable STL files for woodworking jigs and fixtures using CadQuery (optimized for Elegoo Neptune 4 Pro) | ✅ Complete |
 
 ## Author
 
