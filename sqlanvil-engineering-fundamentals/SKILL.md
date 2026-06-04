@@ -85,8 +85,19 @@ postgres: {
 `values` is the raw `FOR VALUES` body matching `kind`. There is no `clusterBy` — use `indexes` instead.
 
 ### 5. Materialized views: `type: "view", materialized: true`
-Emits `CREATE MATERIALIZED VIEW`. Default = **drop + recreate every run** (which also picks up definition changes).
-**Known limitation:** `ViewConfig` has no `postgres: {}` block, so you **cannot** set `refreshPolicy` or `noData` from a view's `config` today — writing `postgres: {...}` in a view config will not parse. For in-place `REFRESH MATERIALIZED VIEW` instead of drop+recreate, add a separate `type: "operations"` action running `refresh materialized view ${ref("mv_name")}` with a dependency on the matview.
+Emits `CREATE MATERIALIZED VIEW`. Default = **drop + recreate every run** (which also picks up definition changes). Set Postgres options directly in the view config via `postgres: {}`:
+```sqlx
+config {
+  type: "view",
+  materialized: true,
+  postgres: {
+    refreshPolicy: "on_dependency_change",   // in-place REFRESH instead of drop+recreate
+    noData: true,                            // CREATE ... WITH NO DATA (empty until first refresh)
+    indexes: [{ name: "idx_mv_id", columns: ["id"], unique: true }]
+  }
+}
+```
+`refreshPolicy: "on_dependency_change"` runs `REFRESH MATERIALIZED VIEW` in place instead of drop+recreate — but in-place refresh does **not** pick up definition (SQL) changes; omit `refreshPolicy` for the safe drop+recreate default.
 
 ### 6. Statement separator is `---`, never `;`
 Three dashes on their own line separate statements in `operations`, `pre_operations`, `post_operations`. sqlanvil never splits on `;`, so PL/pgSQL `$$ ... ; ... $$` bodies survive intact. A `table`/`view` model body is exactly ONE `SELECT` — no `---`.
@@ -110,8 +121,14 @@ CALL marts.recalc()
 
 They are independent and can coexist.
 
-### 9. Primary keys / one-time DDL on incrementals → `post_operations`
-On Postgres, plain `pre_operations`/`post_operations` run only on **create + `--full-refresh`**; `incrementalPre/PostOps` run on appends. So `ALTER TABLE ${self()} ADD PRIMARY KEY (...)` belongs in `post_operations` — it won't re-run (and error) on every append. Matview post-ops re-run on every build, so keep them idempotent (matviews can't have PKs anyway).
+### 9. Primary keys / one-time DDL on incrementals → wrap in `when(!incremental())`
+An **unwrapped** `pre_operations`/`post_operations` block runs on **every** run of an incremental — the initial create *and* every append (the block is compiled into both the create-path ops and the incremental-path ops). So a bare `ALTER TABLE ... ADD PRIMARY KEY` errors on the second run (`multiple primary keys ... not allowed`). Wrap one-time DDL so it only runs on create + `--full-refresh`:
+```sqlx
+post_operations {
+  ${when(!incremental(), `ALTER TABLE ${self()} ADD PRIMARY KEY (order_date)`)}
+}
+```
+(The PK also gives the incremental upsert its `ON CONFLICT` target.) Matview post-ops also re-run every build — keep them idempotent (matviews can't have PKs anyway).
 
 ### 10. Metadata + assertions (same surface as Dataform, works on PG)
 - `description:` (table comment) + `columns: { col: "..." }` (per-column comments) → `COMMENT ON TABLE|VIEW|MATERIALIZED VIEW|COLUMN`. Document every table.
@@ -146,7 +163,7 @@ Boot a local PG with `./tools/postgres/run-postgres-db.sh`. Note: `--dry-run` on
 | `;` between statements | `---` |
 | `CREATE PROCEDURE` + run separately | `type: "operations"` |
 | creds `{postgres:{username,databaseName,ssl}}` | flat `{host,port,database,user,password,sslMode,defaultSchema}` |
-| matview `refreshPolicy` in view config | not supported — use `operations` REFRESH |
+| in-place matview refresh | `postgres: { refreshPolicy: "on_dependency_change" }` in the view config (else drop+recreate) |
 | `dataform run` / `npm run` | `./scripts/run run ... --credentials` |
 
 ## Common Mistakes (observed in real agent baselines)
@@ -156,10 +173,11 @@ Boot a local PG with `./tools/postgres/run-postgres-db.sh`. Note: `--dry-run` on
 3. Nesting credentials under `"postgres"` or using `username`/`databaseName`/`ssl` → flat `PostgresConnection`.
 4. Leaving `bigquery: {}`, `defaultProject`, `clusterBy`, `bigqueryPolicyTags` in → remove all of it.
 5. `;` separators in operations → `---` (and trust `$$...$$` bodies).
-6. `postgres: { refreshPolicy }` on a materialized view → won't parse; use an `operations` REFRESH action.
+6. For a materialized view, set `postgres: { refreshPolicy, noData, indexes }` in the view config (the view's `postgres:` block IS supported).
 7. Assuming a `dataform` CLI → `./scripts/run`.
 8. Confusing incremental `uniqueKey` (merge key) with `assertions.uniqueKey` (quality check).
 9. `opclass: ["..."]` as an array → `opclass` is a single string applied to every indexed column.
+10. Bare `ADD PRIMARY KEY`/`ADD CONSTRAINT` in an incremental's `post_operations` → wrap in `when(!incremental())`, or it re-runs on every append and errors.
 
 ## Red Flags — STOP and check the deltas
 
@@ -169,7 +187,7 @@ If you're about to type any of these in a Postgres/Supabase sqlanvil project, yo
 - `method: "` (string) inside an index
 - `CREATE INDEX` / `SET (fillfactor` inside `post_operations`
 - `;` to separate statements in an operation
-- `postgres: {` inside a `type: "view"` config
+- `ADD PRIMARY KEY`/`ADD CONSTRAINT` in an incremental's `post_operations` without `when(!incremental())`
 - a bare `dataform` or `npm run` command
 
 When unsure of a `postgres:` field name or enum value, read `protos/configs.proto`.
