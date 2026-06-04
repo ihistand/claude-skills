@@ -139,6 +139,7 @@ Don't emit `bigquery: {}`, `partitionBy`, `clusterBy`, `OPTIONS(...)`, `bigquery
 
 ### 12. CLI: `./scripts/run <verb>` (no global `dataform`, no `npm run`)
 ```bash
+./scripts/run init    <projectDir> --warehouse postgres   # or supabase — scaffolds workflow_settings.yaml + .df-credentials.json template (BigQuery is the default and needs a GCP project + location)
 ./scripts/run compile <projectDir>
 ./scripts/run run     <projectDir> --credentials <projectDir>/.df-credentials.json
 ./scripts/run run     <projectDir> --credentials ... --full-refresh
