@@ -150,6 +150,19 @@ Boot a local PG with `./tools/postgres/run-postgres-db.sh`. Note: `--dry-run` on
 ### 13. Supabase extras (`warehouse: supabase`)
 `supabase: {}` block adds `enableRls`, `publishToRealtime`, `ownerRole`, `vectors: [{ column, dimensions, indexType }]`. Dedicated action types: `rlsPolicy`, `realtimePublication`, `wrapper`, `vectorIndex`. `enableRls` only flips RLS on — declare actual policies via the `rlsPolicy` action.
 
+### 14. Declaring external sources: `type: "declaration"`
+Reference a pre-existing (externally-managed) table so `${ref()}` resolves and the DAG tracks it. Two equivalent forms:
+```sqlx
+-- one declaration per .sqlx file
+config { type: "declaration", schema: "raw", name: "orders" }
+```
+```js
+// many declarations in one .js file
+declare({ schema: "raw", name: "orders" });
+declare({ schema: "raw", name: "customers" });
+```
+**Declarations are exempt from `--schema-suffix` / `tablePrefix` / `datasetSuffix` — intentionally.** They point at fixed external tables, so the suffix is *not* applied to a declaration's own target, and `${ref()}` to a declared source resolves to the real (unsuffixed) table even under `--schema-suffix dev`. So a dev run reads true sources while writing to suffixed output schemas. Don't try to "fix" a declaration that lacks a suffix — that's correct.
+
 ## Quick Reference: Dataform/BigQuery → sqlanvil/Postgres
 
 | You'd reach for (Dataform/BQ) | Use instead (sqlanvil/PG) |
