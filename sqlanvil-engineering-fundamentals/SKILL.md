@@ -13,12 +13,13 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 
 **REQUIRED FOUNDATION:** TDD applies — see superpowers:test-driven-development. For warehouse-agnostic architecture, layering, `${ref()}` discipline, and `columns:{}` documentation standards, the rules in **dataform-engineering-fundamentals** carry over unchanged (just swap BigQuery specifics for the deltas below).
 
-**Authoritative config reference:** `protos/configs.proto` in the sqlanvil repo (`PostgresOptions`, `PostgresConnection`, `TableConfig`, `IncrementalTableConfig`, `ViewConfig`). When unsure of a field, read the proto — it is the source of truth.
+**Authoritative config reference:** `protos/configs.proto` in the sqlanvil repo (`PostgresOptions`, `PostgresConnection`, `ConnectionConfig`, `TableConfig`, `IncrementalTableConfig`, `ViewConfig`, `DeclarationConfig`). When unsure of a field, read the proto — it is the source of truth.
 
 ## When to Use
 
 - Writing any `.sqlx` model, `workflow_settings.yaml`, or `.df-credentials.json` for a sqlanvil project on Postgres/Supabase
 - Adding indexes, partitioning, storage options, materialized views, or stored procedures
+- Reading a source table from **another warehouse** (BigQuery, or a second Postgres) — named connections + `introspect`
 - Translating an existing Dataform/BigQuery project to sqlanvil/Postgres
 - Any time you're about to write `bigquery: {}`, `partitionBy`, `dataform.json`, `method: "btree"`, or `;` between statements — STOP and check the deltas
 
@@ -28,8 +29,8 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 ```yaml
 warehouse: postgres            # flat string ("postgres" or "supabase") — NOT nested
 defaultDataset: public         # the Postgres SCHEMA
-defaultAssertionDataset: dataform_assertions
-dataformCoreVersion: 3.0.x
+defaultAssertionDataset: sqlanvil_assertions
+sqlanvilCoreVersion: 1.1.1     # sqlanvil's OWN SemVer line (NOT dataformCoreVersion); 1.1.1+ for named connections
 vars:
   someVar: value
 ```
@@ -164,6 +165,43 @@ declare({ schema: "raw", name: "customers" });
 ```
 **Declarations are exempt from `--schema-suffix` / `tablePrefix` / `datasetSuffix` — intentionally.** They point at fixed external tables, so the suffix is *not* applied to a declaration's own target, and `${ref()}` to a declared source resolves to the real (unsuffixed) table even under `--schema-suffix dev`. So a dev run reads true sources while writing to suffixed output schemas. Don't try to "fix" a declaration that lacks a suffix — that's correct.
 
+### 15. Cross-warehouse sources: named connections + the auto-generated FDW bridge (≥ 1.1.1)
+
+To read a table that lives in **another warehouse** (BigQuery, or a second Postgres) from a Postgres/Supabase project, declare it as a **named connection** — do **not** hand-roll a foreign-data-wrapper. sqlanvil generates the whole FDW bridge for you.
+
+**Step 1 — declare the connection** in `workflow_settings.yaml`:
+```yaml
+warehouse: supabase              # the ONE warehouse sqlanvil writes to
+connections:
+  bigquery_public:
+    platform: bigquery           # "bigquery" | "postgres" | "supabase"
+    project: bigquery-public-data
+    dataset: geo_us_boundaries
+    saKeyId: "<vault-secret-id>" # NON-secret Vault pointer; the SA key lives in Supabase Vault, not here
+    # a postgres/supabase source uses: platform, host, port, database, defaultSchema, saKeyId
+```
+The read (write) warehouse must be **`postgres` or `supabase`** — the bridge is a Postgres FDW; reading a connection from a `warehouse: bigquery` project errors. Connections are **read-only sources**: one R/W warehouse, everything else is a source you pull *from* (no write-back).
+
+**Step 2 — tag a declaration with the connection.** It **requires `columnTypes`** (the FDW needs them to build the foreign table), expressed in **Postgres** types (the foreign table is a Postgres object):
+```sqlx
+config {
+  type: "declaration",
+  connection: "bigquery_public",
+  name: "zip_codes",
+  columnTypes: { zip_code: "text", internal_point_lat: "float8", internal_point_lon: "float8" }
+}
+```
+A connection-tagged declaration with no `columnTypes` is a **compile error** — don't omit them.
+
+**Step 3 — generate that declaration instead of hand-writing it** (preferred):
+```bash
+./scripts/run introspect <connection> <schema.table> --output definitions/sources/<name>.sqlx
+# e.g. ./scripts/run introspect bigquery_public geo_us_boundaries.zip_codes --output definitions/sources/zip_codes.sqlx
+```
+`introspect` reads the live source schema (via read creds configured for that connection) and writes the declaration with each source column mapped to a Postgres type. Without `--output` it prints to stdout.
+
+**What `compile` auto-generates** (you never write these): a foreign server **`<connection>_srv`** and a ref-able foreign table in schema **`<connection>_ext`** — e.g. `bigquery_public_ext.zip_codes`. Downstream models just `${ref("zip_codes")}` it like any other source; multiple declarations on one connection share the server. **Don't** hand-write a `wrapper`/foreign-table action to read a source — named connections replace that manual path.
+
 ## Quick Reference: Dataform/BigQuery → sqlanvil/Postgres
 
 | You'd reach for (Dataform/BQ) | Use instead (sqlanvil/PG) |
@@ -179,6 +217,8 @@ declare({ schema: "raw", name: "customers" });
 | creds `{postgres:{username,databaseName,ssl}}` | flat `{host,port,database,user,password,sslMode,defaultSchema}` |
 | in-place matview refresh | `postgres: { refreshPolicy: "on_dependency_change" }` in the view config (else drop+recreate) |
 | `dataform run` / `npm run` | `./scripts/run run ... --credentials` |
+| hand-written FDW / foreign table to read another warehouse | named connection (`connections:` + `connection:`-tagged declaration), generated via `./scripts/run introspect` |
+| `dataformCoreVersion:` | `sqlanvilCoreVersion:` (sqlanvil's own SemVer line) |
 
 ## Common Mistakes (observed in real agent baselines)
 
@@ -203,5 +243,8 @@ If you're about to type any of these in a Postgres/Supabase sqlanvil project, yo
 - `;` to separate statements in an operation
 - `ADD PRIMARY KEY`/`ADD CONSTRAINT` in an incremental's `post_operations` without `when(!incremental())`
 - a bare `dataform` or `npm run` command
+- `dataformCoreVersion:` in `workflow_settings.yaml` (the field is `sqlanvilCoreVersion:`)
+- a `connection:`-tagged declaration with **no** `columnTypes`, or hand-writing a foreign table instead of using a named connection
+- reading a connection from a `warehouse: bigquery` project (the read side must be `postgres`/`supabase`)
 
 When unsure of a `postgres:` field name or enum value, read `protos/configs.proto`.
