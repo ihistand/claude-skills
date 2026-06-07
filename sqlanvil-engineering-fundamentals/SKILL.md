@@ -198,7 +198,7 @@ A connection-tagged declaration with no `columnTypes` is a **compile error** —
 ./scripts/run introspect <connection> <schema.table> --output definitions/sources/<name>.sqlx
 # e.g. ./scripts/run introspect bigquery_public geo_us_boundaries.zip_codes --output definitions/sources/zip_codes.sqlx
 ```
-`introspect` reads the live source schema (via read creds configured for that connection) and writes the declaration with each source column mapped to a Postgres type. Without `--output` it prints to stdout.
+`introspect` reads the live source schema and writes the declaration with each source column mapped to a Postgres type (`--output` writes the file; otherwise it prints to stdout). It connects from your machine at build time, so it needs **read creds for the source** in `.df-credentials.json` under a `connections` map — `{ "connections": { "<name>": { ...source creds... } } }` (BigQuery: `{ "credentials": <SA key JSON> }`; Postgres: `host`/`port`/`database`/`user`/`password`/`sslMode`). This sits alongside the flat write-warehouse creds; `run` ignores the `connections` map.
 
 **What `compile` auto-generates** (you never write these): a foreign server **`<connection>_srv`** and a ref-able foreign table in schema **`<connection>_ext`** — e.g. `bigquery_public_ext.zip_codes`. Downstream models just `${ref("zip_codes")}` it like any other source; multiple declarations on one connection share the server. **Don't** hand-write a `wrapper`/foreign-table action to read a source — named connections replace that manual path.
 
