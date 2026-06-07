@@ -138,16 +138,16 @@ post_operations {
 ### 11. No BigQuery-isms, ever
 Don't emit `bigquery: {}`, `partitionBy`, `clusterBy`, `OPTIONS(...)`, `bigqueryPolicyTags`, backticked `` `project.dataset.table` ``, or `CREATE ... NOT ENFORCED`. Use the `postgres:` equivalents and standard double-quoted identifiers.
 
-### 12. CLI: `./scripts/run <verb>` (no global `dataform`, no `npm run`)
+### 12. CLI: `sqlanvil <verb>` (the installed CLI — no global `dataform`, no `npm run`)
 ```bash
-./scripts/run init    <projectDir> --warehouse postgres   # or supabase — scaffolds workflow_settings.yaml + .df-credentials.json template (BigQuery is the default and needs a GCP project + location)
-./scripts/run compile <projectDir>
-./scripts/run run     <projectDir> --credentials <projectDir>/.df-credentials.json
-./scripts/run run     <projectDir> --credentials ... --full-refresh
-./scripts/run run     <projectDir> --credentials ... --actions <name> --include-deps
-./scripts/run test    <projectDir> --credentials ...
+sqlanvil init    <projectDir> --warehouse postgres   # or supabase — scaffolds workflow_settings.yaml + .df-credentials.json template (BigQuery is the default and needs a GCP project + location)
+sqlanvil compile <projectDir>
+sqlanvil run     <projectDir> --credentials <projectDir>/.df-credentials.json
+sqlanvil run     <projectDir> --credentials ... --full-refresh
+sqlanvil run     <projectDir> --credentials ... --actions <name> --include-deps
+sqlanvil test    <projectDir> --credentials ...
 ```
-Boot a local PG with `./tools/postgres/run-postgres-db.sh`. Note: `--dry-run` only validates BigQuery today; on Postgres it does **not** EXPLAIN-validate SQL (known gap).
+Install with `npm i -g @sqlanvil/cli`. (Working from a sqlanvil repo checkout instead of the installed CLI? Use `./scripts/run <verb>` in place of `sqlanvil <verb>`.) Note: `--dry-run` only validates BigQuery today; on Postgres it does **not** EXPLAIN-validate SQL (known gap).
 
 ### 13. Supabase extras (`warehouse: supabase`)
 `supabase: {}` block adds `enableRls`, `publishToRealtime`, `ownerRole`, `vectors: [{ column, dimensions, indexType }]`. Dedicated action types: `rlsPolicy`, `realtimePublication`, `wrapper`, `vectorIndex`. `enableRls` only flips RLS on — declare actual policies via the `rlsPolicy` action.
@@ -167,18 +167,17 @@ declare({ schema: "raw", name: "customers" });
 
 ### 15. Cross-warehouse sources: named connections + the auto-generated FDW bridge (≥ 1.1.1)
 
-To read a table that lives in **another warehouse** (BigQuery, or a second Postgres) from a Postgres/Supabase project, declare it as a **named connection** — do **not** hand-roll a foreign-data-wrapper. sqlanvil generates the whole FDW bridge for you.
+To read a table that lives in **BigQuery** from a Postgres/Supabase project, declare it as a **named connection** — do **not** hand-roll a foreign-data-wrapper. sqlanvil generates the whole FDW bridge for you. (**BigQuery sources are the supported path today.** A `platform: postgres`/`supabase` source compiles but is **not yet runnable** — the `postgres_fdw` user mapping isn't emitted, so it has no credentials at run time. Don't use Postgres sources yet.)
 
 **Step 1 — declare the connection** in `workflow_settings.yaml`:
 ```yaml
 warehouse: supabase              # the ONE warehouse sqlanvil writes to
 connections:
   bigquery_public:
-    platform: bigquery           # "bigquery" | "postgres" | "supabase"
+    platform: bigquery           # BigQuery sources are the supported path
     project: bigquery-public-data
     dataset: geo_us_boundaries
     saKeyId: "<vault-secret-id>" # NON-secret Vault pointer; the SA key lives in Supabase Vault, not here
-    # a postgres/supabase source uses: platform, host, port, database, defaultSchema, saKeyId
 ```
 The read (write) warehouse must be **`postgres` or `supabase`** — the bridge is a Postgres FDW; reading a connection from a `warehouse: bigquery` project errors. Connections are **read-only sources**: one R/W warehouse, everything else is a source you pull *from* (no write-back).
 
@@ -195,8 +194,8 @@ A connection-tagged declaration with no `columnTypes` is a **compile error** —
 
 **Step 3 — generate that declaration instead of hand-writing it** (preferred):
 ```bash
-./scripts/run introspect <connection> <schema.table> --output definitions/sources/<name>.sqlx
-# e.g. ./scripts/run introspect bigquery_public geo_us_boundaries.zip_codes --output definitions/sources/zip_codes.sqlx
+sqlanvil introspect <connection> <schema.table> --output definitions/sources/<name>.sqlx
+# e.g. sqlanvil introspect bigquery_public geo_us_boundaries.zip_codes --output definitions/sources/zip_codes.sqlx
 ```
 `introspect` reads the live source schema and writes the declaration with each source column mapped to a Postgres type (`--output` writes the file; otherwise it prints to stdout). It connects from your machine at build time, so it needs **read creds for the source** in `.df-credentials.json` under a `connections` map — `{ "connections": { "<name>": { ...source creds... } } }` (BigQuery: `{ "credentials": <SA key JSON> }`; Postgres: `host`/`port`/`database`/`user`/`password`/`sslMode`). This sits alongside the flat write-warehouse creds; `run` ignores the `connections` map.
 
@@ -216,8 +215,8 @@ A connection-tagged declaration with no `columnTypes` is a **compile error** —
 | `CREATE PROCEDURE` + run separately | `type: "operations"` |
 | creds `{postgres:{username,databaseName,ssl}}` | flat `{host,port,database,user,password,sslMode,defaultSchema}` |
 | in-place matview refresh | `postgres: { refreshPolicy: "on_dependency_change" }` in the view config (else drop+recreate) |
-| `dataform run` / `npm run` | `./scripts/run run ... --credentials` |
-| hand-written FDW / foreign table to read another warehouse | named connection (`connections:` + `connection:`-tagged declaration), generated via `./scripts/run introspect` |
+| `dataform run` / `npm run` | `sqlanvil run ... --credentials` |
+| hand-written FDW / foreign table to read another warehouse | named connection (`connections:` + `connection:`-tagged declaration), generated via `sqlanvil introspect` |
 | `dataformCoreVersion:` | `sqlanvilCoreVersion:` (sqlanvil's own SemVer line) |
 
 ## Common Mistakes (observed in real agent baselines)
@@ -228,7 +227,7 @@ A connection-tagged declaration with no `columnTypes` is a **compile error** —
 4. Leaving `bigquery: {}`, `defaultProject`, `clusterBy`, `bigqueryPolicyTags` in → remove all of it.
 5. `;` separators in operations → `---` (and trust `$$...$$` bodies).
 6. For a materialized view, set `postgres: { refreshPolicy, noData, indexes }` in the view config (the view's `postgres:` block IS supported).
-7. Assuming a `dataform` CLI → `./scripts/run`.
+7. Assuming a `dataform` CLI → it is `sqlanvil` (or `./scripts/run` in a repo checkout).
 8. Confusing incremental `uniqueKey` (merge key) with `assertions.uniqueKey` (quality check).
 9. `opclass: ["..."]` as an array → `opclass` is a single string applied to every indexed column.
 10. Bare `ADD PRIMARY KEY`/`ADD CONSTRAINT` in an incremental's `post_operations` → wrap in `when(!incremental())`, or it re-runs on every append and errors.
