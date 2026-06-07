@@ -165,20 +165,27 @@ declare({ schema: "raw", name: "customers" });
 ```
 **Declarations are exempt from `--schema-suffix` / `tablePrefix` / `datasetSuffix` — intentionally.** They point at fixed external tables, so the suffix is *not* applied to a declaration's own target, and `${ref()}` to a declared source resolves to the real (unsuffixed) table even under `--schema-suffix dev`. So a dev run reads true sources while writing to suffixed output schemas. Don't try to "fix" a declaration that lacks a suffix — that's correct.
 
-### 15. Cross-warehouse sources: named connections + the auto-generated FDW bridge (≥ 1.1.1)
+### 15. Cross-warehouse sources: named connections + the auto-generated FDW bridge (≥ 1.2.0)
 
-To read a table that lives in **BigQuery** from a Postgres/Supabase project, declare it as a **named connection** — do **not** hand-roll a foreign-data-wrapper. sqlanvil generates the whole FDW bridge for you. (**BigQuery sources are the supported path today.** A `platform: postgres`/`supabase` source compiles but is **not yet runnable** — the `postgres_fdw` user mapping isn't emitted, so it has no credentials at run time. Don't use Postgres sources yet.)
+To read a table from **another warehouse** (BigQuery, or a second Postgres) from a Postgres/Supabase project, declare it as a **named connection** — do **not** hand-roll a foreign-data-wrapper. sqlanvil generates the whole FDW bridge for you. (Postgres/supabase sources need core **≥ 1.2.0** — that's when the `postgres_fdw` user mapping + run-time credential injection landed; BigQuery sources work from 1.1.1.)
 
 **Step 1 — declare the connection** in `workflow_settings.yaml`:
 ```yaml
 warehouse: supabase              # the ONE warehouse sqlanvil writes to
 connections:
-  bigquery_public:
-    platform: bigquery           # BigQuery sources are the supported path
+  bigquery_public:               # a BigQuery source
+    platform: bigquery
     project: bigquery-public-data
     dataset: geo_us_boundaries
     saKeyId: "<vault-secret-id>" # NON-secret Vault pointer; the SA key lives in Supabase Vault, not here
+  pg_source:                     # a Postgres source (non-secret coordinates only)
+    platform: postgres
+    host: db.example.com
+    port: 5432
+    database: analytics
+    defaultSchema: public
 ```
+For a **postgres/supabase source**, the secret `user`/`password` go in `.df-credentials.json` under `connections.<name>` (NOT in workflow_settings) — sqlanvil injects them into the generated `CREATE USER MAPPING` at run time.
 The read (write) warehouse must be **`postgres` or `supabase`** — the bridge is a Postgres FDW; reading a connection from a `warehouse: bigquery` project errors. Connections are **read-only sources**: one R/W warehouse, everything else is a source you pull *from* (no write-back).
 
 **Step 2 — tag a declaration with the connection.** It **requires `columnTypes`** (the FDW needs them to build the foreign table), expressed in **Postgres** types (the foreign table is a Postgres object):
