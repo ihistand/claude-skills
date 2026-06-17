@@ -1,15 +1,15 @@
 ---
 name: sqlanvil-engineering-fundamentals
-description: Use when writing or editing a sqlanvil data project (.sqlx models, workflow_settings.yaml, .df-credentials.json) targeting PostgreSQL or Supabase - corrects Dataform/BigQuery priors that produce wrong config blocks, credentials, DDL, separators, and CLI commands in the sqlanvil fork
+description: Use when writing or editing a sqlanvil data project (.sqlx models, workflow_settings.yaml, .df-credentials.json) targeting PostgreSQL, Supabase, or MySQL/MariaDB - corrects Dataform/BigQuery priors that produce wrong config blocks, credentials, DDL, separators, and CLI commands in the sqlanvil fork
 ---
 
 # sqlanvil Engineering Fundamentals
 
 ## Overview
 
-**sqlanvil is a fork of Dataform repositioned for PostgreSQL and Supabase.** Your Dataform/BigQuery instincts are *mostly* right — `.sqlx` files, `config {}` blocks, `${ref()}`, `${self()}`, declarations, assertions, tags, incremental tables, `pre_operations`/`post_operations` all work the same. **This skill is the delta**: the specific places where assuming Dataform/BigQuery produces broken sqlanvil code.
+**sqlanvil is a fork of Dataform repositioned for PostgreSQL, Supabase, and MySQL/MariaDB.** Your Dataform/BigQuery instincts are *mostly* right — `.sqlx` files, `config {}` blocks, `${ref()}`, `${self()}`, declarations, assertions, tags, incremental tables, `pre_operations`/`post_operations` all work the same. **This skill is the delta**: the specific places where assuming Dataform/BigQuery produces broken sqlanvil code.
 
-**Core principle:** When the warehouse is Postgres/Supabase, reach for the **`postgres: {}` config block** and idiomatic Postgres — never BigQuery options or hand-rolled DDL workarounds.
+**Core principle:** When the warehouse is Postgres/Supabase, reach for the **`postgres: {}` config block** and idiomatic Postgres — never BigQuery options or hand-rolled DDL workarounds. **MySQL/MariaDB is different** — it has a deliberately smaller surface (no options block, no matviews) and several Postgres rules *invert*; see the dedicated MySQL section below before authoring a `warehouse: mysql` project.
 
 **REQUIRED FOUNDATION:** TDD applies — see superpowers:test-driven-development. For warehouse-agnostic architecture, layering, `${ref()}` discipline, and `columns:{}` documentation standards, the rules in **dataform-engineering-fundamentals** carry over unchanged (just swap BigQuery specifics for the deltas below).
 
@@ -17,7 +17,7 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 
 ## When to Use
 
-- Writing any `.sqlx` model, `workflow_settings.yaml`, or `.df-credentials.json` for a sqlanvil project on Postgres/Supabase
+- Writing any `.sqlx` model, `workflow_settings.yaml`, or `.df-credentials.json` for a sqlanvil project on Postgres/Supabase **or MySQL/MariaDB**
 - Adding indexes, partitioning, storage options, materialized views, or stored procedures
 - Reading a source table from **another warehouse** (BigQuery, or a second Postgres) — named connections + `introspect`
 - Translating an existing Dataform/BigQuery project to sqlanvil/Postgres
@@ -208,6 +208,26 @@ sqlanvil introspect <connection> <schema.table> --output definitions/sources/<na
 
 **What `compile` auto-generates** (you never write these): a foreign server **`<connection>_srv`** and a ref-able foreign table in schema **`<connection>_ext`** — e.g. `bigquery_public_ext.zip_codes`. Downstream models just `${ref("zip_codes")}` it like any other source; multiple declarations on one connection share the server. **Don't** hand-write a `wrapper`/foreign-table action to read a source — named connections replace that manual path.
 
+## MySQL / MariaDB (`warehouse: mysql`)
+
+One adapter serves **both MySQL 8 and MariaDB 11** — same `warehouse: mysql`, same generated SQL (MariaDB-specific features ride through `operations`). The MySQL surface is **deliberately smaller** than Postgres and several deltas above **invert** — read this before authoring a MySQL project.
+
+**Config & credentials**
+- `workflow_settings.yaml`: `warehouse: mysql`. `defaultDataset` = the MySQL **database** (MySQL has no schema-vs-database split — "schema" *is* the database). `defaultAssertionDataset` is a separate database. `sqlanvilCoreVersion: 1.5.0`+ (MySQL landed in 1.5.0).
+- `.df-credentials.json`: flat **`MysqlConnection`** — exact fields `host port database user password sslMode`. **No `defaultSchema`** (unlike Postgres). `sslMode`: `"disable"` (default/local) or `"require"`. Default port `3306`. Compiled identifiers are two-part backticks `` `db`.`table` `` (not BigQuery's single dotted-backtick, not Postgres double-quotes).
+
+**The inversions — do NOT carry the Postgres rules over**
+- **No `mysql: {}` config block exists (yet).** There is no first-class indexes / partitioning / storage-options block. So — the *opposite* of delta #3's "never hand-roll DDL" — **secondary indexes, engine/charset, table options, and partitioning ARE expressed as raw MySQL DDL in `operations` / `post_operations`** (wrap one-time DDL on incrementals in `when(!incremental())`, delta #9). Never put a `postgres: {}` block on a mysql model — wrong dialect, silently wrong.
+- **Incremental `uniqueKey` is sufficient — don't add your own unique index/PK.** `uniqueKey: ["id"]` compiles to `INSERT ... ON DUPLICATE KEY UPDATE`, and the adapter **auto-creates the matching unique index** (`uq_<db>_<table>`) on the first / `--full-refresh` build. Adding your own PK/unique for the merge (the Postgres `ON CONFLICT` pattern of delta #9) duplicates it.
+- **No materialized views.** `type: "view", materialized: true` **errors** on MySQL. Use `type: "table"` (rebuilt each run). No `refreshPolicy` / `noData`.
+- **`description:` / `columns:` are NOT applied to the database.** They compile, but COMMENT metadata is a no-op on MySQL today (deferred) — comments won't land in `information_schema`. Keep them for portability/docs, but don't expect DB-side comments. Assertions (standalone + auto `assertions: {}`) DO work.
+- **No cross-warehouse sources.** A `warehouse: mysql` project can't read named `connections` (the FDW bridge is Postgres-only) and MySQL can't be a source connection — so no `introspect` for/from MySQL (delta #15 is Postgres/Supabase-only).
+
+**Same as Postgres/everywhere**
+- Statement separator is `---`, never `;` (delta #6). **Do not use `DELIMITER`** — it's a mysql-client directive, not a server statement. A `CREATE PROCEDURE ... BEGIN ... ; ... END` is one statement between `---` separators; its internal `;` survive.
+- `type: "operations"` for procedures/functions/triggers/grants (delta #7) — backtick-quote identifiers in raw DDL, never double-quote. `uniqueKey` (merge) vs `assertions.uniqueKey` (quality check) distinction (delta #8) holds.
+- CLI: `sqlanvil init <dir> --warehouse mysql`. Boot local engines with `./tools/mysql/run-mysql-db.sh` (mysql:8 on 3306, mariadb:11 on 3307).
+
 ## Quick Reference: Dataform/BigQuery → sqlanvil/Postgres
 
 | You'd reach for (Dataform/BQ) | Use instead (sqlanvil/PG) |
@@ -252,5 +272,12 @@ If you're about to type any of these in a Postgres/Supabase sqlanvil project, yo
 - `dataformCoreVersion:` in `workflow_settings.yaml` (the field is `sqlanvilCoreVersion:`)
 - a `connection:`-tagged declaration with **no** `columnTypes`, or hand-writing a foreign table instead of using a named connection
 - reading a connection from a `warehouse: bigquery` project (the read side must be `postgres`/`supabase`)
+
+On a **`warehouse: mysql`** project specifically:
+- a `postgres: {}` (or `bigquery: {}`) block, or `defaultSchema` in the credentials, or double-quoted identifiers in raw DDL (MySQL uses backticks)
+- `materialized: true` (errors — no matviews on MySQL)
+- a hand-added `PRIMARY KEY`/unique index just to make an incremental `uniqueKey` merge work (the adapter creates it for you)
+- `DELIMITER $$` around a procedure body (sqlanvil splits on `---`, not `;` — `DELIMITER` is a client-only directive and will fail)
+- expecting `description:`/`columns:` to produce DB comments (no-op on MySQL today)
 
 When unsure of a `postgres:` field name or enum value, read `protos/configs.proto`.
