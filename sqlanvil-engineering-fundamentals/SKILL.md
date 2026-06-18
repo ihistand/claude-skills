@@ -219,7 +219,7 @@ One adapter serves **both MySQL 8 and MariaDB 11** — same `warehouse: mysql`, 
 **The inversions — do NOT carry the Postgres rules over**
 - **`mysql: {}` config block (indexes + engine/charset/collation).** Declare secondary indexes (`indexes: [{ name?, columns, unique? }]`) and table options (`engine`, `charset`, `collation`) in config — the role delta #3's `postgres: {}` plays. **Plain B-tree only** — no `WHERE` / `INCLUDE` / `opclass` (Postgres-only). **Partitioning, FULLTEXT/SPATIAL/prefix indexes, and `row_format` are NOT in the block yet** — those remain raw MySQL DDL in `operations` / `post_operations` (wrap one-time DDL on incrementals in `when(!incremental())`, delta #9). Use `mysql: {}`, never `postgres: {}`, on a mysql model — a `postgres:` block is the wrong dialect and silently ignored.
 - **Incremental `uniqueKey` is sufficient — don't add your own unique index/PK.** `uniqueKey: ["id"]` compiles to `INSERT ... ON DUPLICATE KEY UPDATE`, and the adapter **auto-creates the matching unique index** (`uq_<db>_<table>`) on the first / `--full-refresh` build. Adding your own PK/unique for the merge (the Postgres `ON CONFLICT` pattern of delta #9) duplicates it.
-- **No materialized views.** `type: "view", materialized: true` **errors** on MySQL. Use `type: "table"` (rebuilt each run). No `refreshPolicy` / `noData`.
+- **Materialized views are emulated as a refreshed table snapshot.** `type: "view", materialized: true` builds a real table via drop + CTAS each run (refresh = re-run), honoring the `mysql: {}` block (engine/charset/indexes). No native matview, so it reads back as a table; no `refreshPolicy` / `noData` (those are Postgres-only).
 - **`description:` / `columns:` apply as real DB comments.** They produce table/column comments via `ALTER TABLE … COMMENT` / `MODIFY COLUMN … COMMENT` and read back from `information_schema` (same documentation surface as Postgres). Tables/incrementals only — MySQL views can't carry comments, so a view's `description:`/`columns:` are skipped. Assertions (standalone + auto `assertions: {}`) also work.
 - **No cross-warehouse sources.** A `warehouse: mysql` project can't read named `connections` (the FDW bridge is Postgres-only) and MySQL can't be a source connection — so no `introspect` for/from MySQL (delta #15 is Postgres/Supabase-only).
 
@@ -275,7 +275,7 @@ If you're about to type any of these in a Postgres/Supabase sqlanvil project, yo
 
 On a **`warehouse: mysql`** project specifically:
 - a `postgres: {}` (or `bigquery: {}`) block, or `defaultSchema` in the credentials, or double-quoted identifiers in raw DDL (MySQL uses backticks)
-- `materialized: true` (errors — no matviews on MySQL)
+- expecting `materialized: true` to be a live/incremental matview — on MySQL it's a refreshed table snapshot (drop + CTAS each run), not a native materialized view
 - a hand-added `PRIMARY KEY`/unique index just to make an incremental `uniqueKey` merge work (the adapter creates it for you)
 - `DELIMITER $$` around a procedure body (sqlanvil splits on `---`, not `;` — `DELIMITER` is a client-only directive and will fail)
 - expecting `description:`/`columns:` on a **view** to produce comments (MySQL views can't carry comments; on tables/incrementals they now do)
