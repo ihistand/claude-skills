@@ -19,7 +19,8 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 
 - Writing any `.sqlx` model, `workflow_settings.yaml`, or `.df-credentials.json` for a sqlanvil project on Postgres/Supabase **or MySQL/MariaDB**
 - Adding indexes, partitioning, storage options, materialized views, or stored procedures
-- Reading a source table from **another warehouse** (BigQuery, or a second Postgres) — named connections + `introspect`
+- Reading a source table from **another warehouse** (BigQuery, a second Postgres, or MySQL/MariaDB) — named connections + `introspect`
+- Loading a file into the warehouse (`type: "import"`) or exporting query results to files (`type: "export"`)
 - Translating an existing Dataform/BigQuery project to sqlanvil/Postgres
 - Any time you're about to write `bigquery: {}`, `partitionBy`, `dataform.json`, `method: "btree"`, or `;` between statements — STOP and check the deltas
 
@@ -30,7 +31,7 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 warehouse: postgres            # flat string ("postgres" or "supabase") — NOT nested
 defaultDataset: public         # the Postgres SCHEMA
 defaultAssertionDataset: sqlanvil_assertions
-sqlanvilCoreVersion: 1.1.1     # sqlanvil's OWN SemVer line (NOT dataformCoreVersion); 1.1.1+ for named connections
+sqlanvilCoreVersion: 1.19.0    # sqlanvil's OWN SemVer line (NOT dataformCoreVersion); pin the current release
 vars:
   someVar: value
 ```
@@ -140,14 +141,21 @@ Don't emit `bigquery: {}`, `partitionBy`, `clusterBy`, `OPTIONS(...)`, `bigquery
 
 ### 12. CLI: `sqlanvil <verb>` (the installed CLI — no global `dataform`, no `npm run`)
 ```bash
-sqlanvil init    <projectDir> --warehouse postgres   # or supabase — scaffolds workflow_settings.yaml + .df-credentials.json template (BigQuery is the default and needs a GCP project + location)
-sqlanvil compile <projectDir>
-sqlanvil run     <projectDir> --credentials <projectDir>/.df-credentials.json
-sqlanvil run     <projectDir> --credentials ... --full-refresh
-sqlanvil run     <projectDir> --credentials ... --actions <name> --include-deps
-sqlanvil test    <projectDir> --credentials ...
+sqlanvil init      <projectDir> --warehouse postgres   # or supabase/mysql — scaffolds workflow_settings.yaml + .df-credentials.json template (BigQuery is the default and needs a GCP project + location)
+sqlanvil compile   <projectDir>
+sqlanvil run       <projectDir> --credentials <projectDir>/.df-credentials.json
+sqlanvil run       <projectDir> --credentials ... --full-refresh
+sqlanvil run       <projectDir> --credentials ... --actions <name> --include-deps
+sqlanvil validate  <projectDir> --credentials ...      # EXPLAIN-validate the whole DAG without executing (PG/Supabase/MySQL; BigQuery via dry-run)
+sqlanvil test      <projectDir> --credentials ...
 ```
-Install with `npm i -g @sqlanvil/cli`. (Working from a sqlanvil repo checkout instead of the installed CLI? Use `./scripts/run <verb>` in place of `sqlanvil <verb>`.) Note: `--dry-run` only validates BigQuery today; on Postgres it does **not** EXPLAIN-validate SQL (known gap).
+Install with `npm i -g @sqlanvil/cli`. (Working from a sqlanvil repo checkout instead of the installed CLI? Use `./scripts/run <verb>` in place of `sqlanvil <verb>`.)
+
+**`validate` / `run --dry-run` (≥ 1.9):** walks the DAG in dependency order, `EXPLAIN`-checks each model against the live warehouse in a throwaway shadow schema (empty stubs let downstream `${ref()}`s resolve), and reports **PASS / FAILURE / BLOCKED** (blocked = only an upstream failed) / SKIPPED (operations, imports). `run --dry-run` on Postgres/Supabase/MySQL now *validates* — it no longer silently executes. Any FAILURE/BLOCKED exits non-zero.
+
+**`run --graph <file>` (≥ 1.17):** executes a stored `compile --json` output directly — no compile, no project source needed (bare dir + credentials works). What runs is exactly what was compiled (environment overrides are baked in — `--environment` with `--graph` is rejected; selection flags still apply). This is the release-artifact pattern: compile once, run the identical graph later/elsewhere.
+
+**Queryable artifacts:** `compile`/`run` write Parquet artifacts under `<projectDir>/target/` (gitignore it). `sqlanvil query "<sql>"` runs SQL over them (views: `actions`, `dependencies`, `columns`, `runs`), `sqlanvil inspect` prints a project/run summary, `sqlanvil docs` renders a self-contained HTML catalog to `target/docs/index.html`. All warehouse-agnostic (no connection needed).
 
 **Named environments (`--environment <name>`):** define dev/staging/prod in an `environments:` block in `workflow_settings.yaml`; each bundles non-secret overrides + a pointer to a gitignored credentials file:
 ```yaml
@@ -185,16 +193,27 @@ connections:
     platform: bigquery
     project: bigquery-public-data
     dataset: geo_us_boundaries
-    saKeyId: "<vault-secret-id>" # NON-secret Vault pointer; the SA key lives in Supabase Vault, not here
+    billingProject: my-gcp-proj  # ≥1.13: bill YOUR project when `project` is read-but-not-bill (e.g. public data)
+    saKeyId: "<vault-secret-id>" # NON-secret Vault pointer (fdw mode); the SA key lives in Supabase Vault, not here
+    # mode: runner-extract       # ≥1.15: materialize at run time instead of a live FDW (see below)
   pg_source:                     # a Postgres source (non-secret coordinates only)
     platform: postgres
     host: db.example.com
     port: 5432
     database: analytics
     defaultSchema: public
+  shop_mysql:                    # ≥1.18: a MySQL/MariaDB source — runner-extract ONLY (no PG FDW for MySQL)
+    platform: mysql
+    host: mysql.example.com
+    port: 3306
+    database: shop
 ```
-For a **postgres/supabase source**, the secret `user`/`password` go in `.df-credentials.json` under `connections.<name>` (NOT in workflow_settings) — sqlanvil injects them into the generated `CREATE USER MAPPING` at run time.
-The read (write) warehouse must be **`postgres` or `supabase`** — the bridge is a Postgres FDW; reading a connection from a `warehouse: bigquery` project errors. Connections are **read-only sources**: one R/W warehouse, everything else is a source you pull *from* (no write-back).
+For a **postgres/supabase source**, the secret `user`/`password` go in `.df-credentials.json` under `connections.<name>` (NOT in workflow_settings) — sqlanvil injects them into the generated `CREATE USER MAPPING` at run time. For a **mysql source**, `connections.<name>` holds `{ host, port, user, password, sslMode? }`.
+The read (write) warehouse must be **`postgres` or `supabase`** — reading a connection from a `warehouse: bigquery`/`mysql` project errors. Connections are **read-only sources**: one R/W warehouse, everything else is a source you pull *from* (no write-back).
+
+**Two source modes (`mode:` on the connection):**
+- **`fdw`** (default for bigquery/postgres/supabase) — a live foreign table; needs the `wrappers` extension (+ Vault secret for BigQuery) on the warehouse.
+- **`runner-extract`** (≥1.15 BigQuery; the default and ONLY mode for mysql, ≥1.18) — the CLI reads the source at run time and **materializes** the rows into a plain `<connection>_ext.<name>` table (capped 1M rows / 512MB). No Vault secret, no `wrappers`/`postgis` — works on bare/ephemeral databases where an FDW can't exist (branch CI). BigQuery auth in `connections.<name>` can be **keyless**: a short-lived `accessToken` (≥1.14), a `credentials` SA key, or ADC. An explicit `mode: fdw` on a mysql connection is a **compile error**.
 
 **Step 2 — tag a declaration with the connection.** It **requires `columnTypes`** (the FDW needs them to build the foreign table), expressed in **Postgres** types (the foreign table is a Postgres object):
 ```sqlx
@@ -212,24 +231,35 @@ A connection-tagged declaration with no `columnTypes` is a **compile error** —
 sqlanvil introspect <connection> <schema.table> --output definitions/sources/<name>.sqlx
 # e.g. sqlanvil introspect bigquery_public geo_us_boundaries.zip_codes --output definitions/sources/zip_codes.sqlx
 ```
-`introspect` reads the live source schema and writes the declaration with each source column mapped to a Postgres type (`--output` writes the file; otherwise it prints to stdout). It connects from your machine at build time, so it needs **read creds for the source** in `.df-credentials.json` under a `connections` map — `{ "connections": { "<name>": { ...source creds... } } }` (BigQuery: `{ "credentials": <SA key JSON> }`; Postgres: `host`/`port`/`database`/`user`/`password`/`sslMode`). This sits alongside the flat write-warehouse creds; `run` ignores the `connections` map.
+`introspect` reads the live source schema and writes the declaration with each source column mapped to a Postgres type — BigQuery→PG, Postgres→PG, and **MySQL→PG since 1.18** (`datetime`→`timestamp`, `double`→`double precision`, `json`→`jsonb`, blobs→`bytea`) — because `columnTypes` define the bridge/extract table *in the warehouse*. (`--output` writes the file; otherwise it prints to stdout.) It connects from your machine at build time, so it needs **read creds for the source** in `.df-credentials.json` under a `connections` map — `{ "connections": { "<name>": { ...source creds... } } }` (BigQuery: `{ "credentials": <SA key JSON> }` or a keyless `accessToken`; Postgres/MySQL: `host`/`port`/`database`/`user`/`password`/`sslMode`). This sits alongside the flat write-warehouse creds; `run` also reads the `connections` map for runner-extract sources and user-mapping injection.
 
-**What `compile` auto-generates** (you never write these): a foreign server **`<connection>_srv`** and a ref-able foreign table in schema **`<connection>_ext`** — e.g. `bigquery_public_ext.zip_codes`. Downstream models just `${ref("zip_codes")}` it like any other source; multiple declarations on one connection share the server. **Don't** hand-write a `wrapper`/foreign-table action to read a source — named connections replace that manual path.
+**What `compile` auto-generates** (you never write these): in `fdw` mode, a foreign server **`<connection>_srv`** and a ref-able foreign table in schema **`<connection>_ext`** — e.g. `bigquery_public_ext.zip_codes`; in `runner-extract` mode, a ref-able **extract action** that materializes the same `<connection>_ext.<name>` table at run time. Downstream models just `${ref("zip_codes")}` either one like any other source; multiple declarations on one connection share the server. **Don't** hand-write a `wrapper`/foreign-table action to read a source — named connections replace that manual path.
+
+### 16. File exports and imports (`type: "export"` ≥1.8, `type: "import"` ≥1.12)
+
+Config-only actions that move **files** across the warehouse boundary (Parquet/CSV/JSON; local paths or `s3://`/`gs://` URIs — bucket creds go under a `storage:` map in `.df-credentials.json`):
+```sqlx
+config { type: "import", dataset: "oa_ext", name: "openaddresses_us",
+         import: { location: "data/sample.csv", format: "csv", overwrite: true } }
+```
+- **`import`** loads a file into a warehouse table — a *producer*, `${ref()}`-able like any source (on Postgres/Supabase via the runner-side DuckDB bridge; BigQuery uses native `LOAD DATA`, gs:// only; MySQL throws). `location` is the verbatim source path/glob/URI — NOT a derived filename; `overwrite` defaults true (drop+create), `false` appends. No transform on the way in — shape it downstream.
+- **`export`** writes a query's result to a file — a terminal *sink* (nothing can `ref()` it).
+- `validate` marks imports SKIPPED (file columns unknown pre-run) and downstream models BLOCKED — expected, not a bug. Hosted SQLAnvil Cloud rejects *local* paths at compile (ephemeral runner disk) — use object-store URIs there.
 
 ## MySQL / MariaDB (`warehouse: mysql`)
 
 One adapter serves **both MySQL 8 and MariaDB 11** — same `warehouse: mysql`, same generated SQL (MariaDB-specific features ride through `operations`). The MySQL surface is **deliberately smaller** than Postgres and several deltas above **invert** — read this before authoring a MySQL project.
 
 **Config & credentials**
-- `workflow_settings.yaml`: `warehouse: mysql`. `defaultDataset` = the MySQL **database** (MySQL has no schema-vs-database split — "schema" *is* the database). `defaultAssertionDataset` is a separate database. `sqlanvilCoreVersion: 1.5.0`+ (MySQL landed in 1.5.0).
+- `workflow_settings.yaml`: `warehouse: mysql`. `defaultDataset` = the MySQL **database** (MySQL has no schema-vs-database split — "schema" *is* the database). `defaultAssertionDataset` is a separate database. Pin the current core (`sqlanvilCoreVersion: 1.19.0`; MySQL warehouse needs ≥1.5, full `mysql:{}` block ≥1.19).
 - `.df-credentials.json`: flat **`MysqlConnection`** — exact fields `host port database user password sslMode`. **No `defaultSchema`** (unlike Postgres). `sslMode`: `"disable"` (default/local) or `"require"`. Default port `3306`. Compiled identifiers are two-part backticks `` `db`.`table` `` (not BigQuery's single dotted-backtick, not Postgres double-quotes).
 
 **The inversions — do NOT carry the Postgres rules over**
-- **`mysql: {}` config block (indexes + engine/charset/collation).** Declare secondary indexes (`indexes: [{ name?, columns, unique? }]`) and table options (`engine`, `charset`, `collation`) in config — the role delta #3's `postgres: {}` plays. **Plain B-tree only** — no `WHERE` / `INCLUDE` / `opclass` (Postgres-only). **Partitioning, FULLTEXT/SPATIAL/prefix indexes, and `row_format` are NOT in the block yet** — those remain raw MySQL DDL in `operations` / `post_operations` (wrap one-time DDL on incrementals in `when(!incremental())`, delta #9). Use `mysql: {}`, never `postgres: {}`, on a mysql model — a `postgres:` block is the wrong dialect and silently ignored.
+- **`mysql: {}` config block (indexes + table options + partitioning).** Declare secondary indexes (`indexes: [{ name?, columns, unique?, type? }]`) and table options (`engine`, `charset`, `collation`, `rowFormat` ≥1.19) in config — the role delta #3's `postgres: {}` plays. Index `type:` is `"fulltext"` or `"spatial"` (≥1.19; mutually exclusive with `unique`; a SPATIAL index needs a NOT NULL SRID geometry column, which CTAS doesn't produce — usually needs a `post_operations` `MODIFY` first). A column may carry a **prefix length in MySQL's own syntax** — `"body(50)"` → `` `body`(50) `` (required to index TEXT/BLOB, ≥1.19). No `WHERE`/`INCLUDE`/`opclass` (Postgres-only). **Native partitioning** via `mysql: { partition: { kind, expression, partitions: [{name, values}], count } }` (≥1.11; `kind`: RANGE=0, LIST=1, HASH=2, KEY=3; NB MySQL requires partition columns in every UNIQUE/PRIMARY key — a partitioned incremental's `uniqueKey` must include them). Use `mysql: {}`, never `postgres: {}`, on a mysql model — a `postgres:` block is the wrong dialect and silently ignored.
 - **Incremental `uniqueKey` is sufficient — don't add your own unique index/PK.** `uniqueKey: ["id"]` compiles to `INSERT ... ON DUPLICATE KEY UPDATE`, and the adapter **auto-creates the matching unique index** (`uq_<db>_<table>`) on the first / `--full-refresh` build. Adding your own PK/unique for the merge (the Postgres `ON CONFLICT` pattern of delta #9) duplicates it.
-- **Materialized views are emulated as a refreshed table snapshot.** `type: "view", materialized: true` builds a real table via drop + CTAS each run (refresh = re-run), honoring the `mysql: {}` block (engine/charset/indexes). No native matview, so it reads back as a table; no `refreshPolicy` / `noData` (those are Postgres-only).
+- **Materialized views are emulated as a refreshed table snapshot.** `type: "view", materialized: true` builds a real table via drop + CTAS each run (refresh = re-run), honoring the `mysql: {}` block (engine/charset/rowFormat/indexes — the view config's `mysql:` block compiles through since **1.19**; earlier versions silently ignored it). No native matview, so it reads back as a table; no `refreshPolicy` / `noData` (those are Postgres-only).
 - **`description:` / `columns:` apply as real DB comments.** They produce table/column comments via `ALTER TABLE … COMMENT` / `MODIFY COLUMN … COMMENT` and read back from `information_schema` (same documentation surface as Postgres). Tables/incrementals only — MySQL views can't carry comments, so a view's `description:`/`columns:` are skipped. Assertions (standalone + auto `assertions: {}`) also work.
-- **No cross-warehouse sources.** A `warehouse: mysql` project can't read named `connections` (the FDW bridge is Postgres-only) and MySQL can't be a source connection — so no `introspect` for/from MySQL (delta #15 is Postgres/Supabase-only).
+- **A mysql WAREHOUSE can't read cross-warehouse sources — but MySQL as a SOURCE works (≥1.18).** Only a postgres/supabase warehouse reads `connections`; a `warehouse: mysql` project tagging a declaration with `connection:` errors. The other direction shipped in 1.18: a `platform: mysql` connection feeds a Postgres/Supabase warehouse via **runner-extract only** (no PG FDW for MySQL; `mode: fdw` = compile error) — see delta #15. `sqlanvil introspect` scaffolds declarations from a MySQL source, mapping MySQL→Postgres types.
 
 **Same as Postgres/everywhere**
 - Statement separator is `---`, never `;` (delta #6). **Do not use `DELIMITER`** — it's a mysql-client directive, not a server statement. A `CREATE PROCEDURE ... BEGIN ... ; ... END` is one statement between `---` separators; its internal `;` survive.
@@ -253,6 +283,9 @@ One adapter serves **both MySQL 8 and MariaDB 11** — same `warehouse: mysql`, 
 | `dataform run` / `npm run` | `sqlanvil run ... --credentials` |
 | hand-written FDW / foreign table to read another warehouse | named connection (`connections:` + `connection:`-tagged declaration), generated via `sqlanvil introspect` |
 | `dataformCoreVersion:` | `sqlanvilCoreVersion:` (sqlanvil's own SemVer line) |
+| BigQuery `LOAD DATA` / hand-rolled `COPY` to ingest a file | `type: "import"` (≥1.12; DuckDB bridge on PG/Supabase) |
+| `EXPORT DATA` only-on-BQ | `type: "export"` (≥1.8; Parquet/CSV/JSON, local or s3://gs://) |
+| hoping `--dry-run` validates | `sqlanvil validate` — EXPLAIN-checks the whole DAG (PG/Supabase/MySQL) |
 
 ## Common Mistakes (observed in real agent baselines)
 
@@ -279,7 +312,9 @@ If you're about to type any of these in a Postgres/Supabase sqlanvil project, yo
 - a bare `dataform` or `npm run` command
 - `dataformCoreVersion:` in `workflow_settings.yaml` (the field is `sqlanvilCoreVersion:`)
 - a `connection:`-tagged declaration with **no** `columnTypes`, or hand-writing a foreign table instead of using a named connection
-- reading a connection from a `warehouse: bigquery` project (the read side must be `postgres`/`supabase`)
+- reading a connection from a `warehouse: bigquery`/`mysql` project (the read side must be `postgres`/`supabase`)
+- `mode: fdw` on a `platform: mysql` connection (MySQL sources are runner-extract only — compile error)
+- `columnTypes` written in the SOURCE dialect (`datetime`, `double`) — they define the bridge/extract table IN THE WAREHOUSE, so they must be Postgres types (`timestamp`, `double precision`); use `introspect`, which maps them for you
 
 On a **`warehouse: mysql`** project specifically:
 - a `postgres: {}` (or `bigquery: {}`) block, or `defaultSchema` in the credentials, or double-quoted identifiers in raw DDL (MySQL uses backticks)
@@ -287,5 +322,7 @@ On a **`warehouse: mysql`** project specifically:
 - a hand-added `PRIMARY KEY`/unique index just to make an incremental `uniqueKey` merge work (the adapter creates it for you)
 - `DELIMITER $$` around a procedure body (sqlanvil splits on `---`, not `;` — `DELIMITER` is a client-only directive and will fail)
 - expecting `description:`/`columns:` on a **view** to produce comments (MySQL views can't carry comments; on tables/incrementals they now do)
+- raw `CREATE FULLTEXT/SPATIAL INDEX` or `PARTITION BY` DDL in `operations` — those are first-class in the `mysql: {}` block now (indexes `type:`, prefix `"col(50)"`, `rowFormat`, `partition:`); raw DDL remains only for exotica (AUTO_INCREMENT seeds etc.)
+- `unique: true` combined with `type: "fulltext"|"spatial"` on an index (mutually exclusive — build error)
 
 When unsure of a `postgres:` field name or enum value, read `protos/configs.proto`.
