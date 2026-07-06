@@ -21,6 +21,7 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 - Adding indexes, partitioning, storage options, materialized views, or stored procedures
 - Reading a source table from **another warehouse** (BigQuery, a second Postgres, or MySQL/MariaDB) — named connections + `introspect`
 - Loading a file into the warehouse (`type: "import"`) or exporting query results to files (`type: "export"`)
+- Staging/glue steps in Python (`python:` script actions in actions.yaml, ≥1.20)
 - Translating an existing Dataform/BigQuery project to sqlanvil/Postgres
 - Any time you're about to write `bigquery: {}`, `partitionBy`, `dataform.json`, `method: "btree"`, or `;` between statements — STOP and check the deltas
 
@@ -31,7 +32,7 @@ description: Use when writing or editing a sqlanvil data project (.sqlx models, 
 warehouse: postgres            # flat string ("postgres" or "supabase") — NOT nested
 defaultDataset: public         # the Postgres SCHEMA
 defaultAssertionDataset: sqlanvil_assertions
-sqlanvilCoreVersion: 1.19.0    # sqlanvil's OWN SemVer line (NOT dataformCoreVersion); pin the current release
+sqlanvilCoreVersion: 1.20.0    # sqlanvil's OWN SemVer line (NOT dataformCoreVersion); pin the current release
 vars:
   someVar: value
 ```
@@ -151,7 +152,7 @@ sqlanvil test      <projectDir> --credentials ...
 ```
 Install with `npm i -g @sqlanvil/cli`. (Working from a sqlanvil repo checkout instead of the installed CLI? Use `./scripts/run <verb>` in place of `sqlanvil <verb>`.)
 
-**`validate` / `run --dry-run` (≥ 1.9):** walks the DAG in dependency order, `EXPLAIN`-checks each model against the live warehouse in a throwaway shadow schema (empty stubs let downstream `${ref()}`s resolve), and reports **PASS / FAILURE / BLOCKED** (blocked = only an upstream failed) / SKIPPED (operations, imports). `run --dry-run` on Postgres/Supabase/MySQL now *validates* — it no longer silently executes. Any FAILURE/BLOCKED exits non-zero.
+**`validate` / `run --dry-run` (≥ 1.9):** walks the DAG in dependency order, `EXPLAIN`-checks each model against the live warehouse in a throwaway shadow schema (empty stubs let downstream `${ref()}`s resolve), and reports **PASS / FAILURE / BLOCKED** (blocked = only an upstream failed) / SKIPPED (operations, imports). `run --dry-run` on Postgres/Supabase/MySQL now *validates* — it no longer silently executes. Any FAILURE/BLOCKED exits non-zero. Python script actions (≥1.20) get an env check instead of EXPLAIN — interpreter vs `pythonVersion`, requirements vs installed packages, syntax — without executing the script.
 
 **`run --graph <file>` (≥ 1.17):** executes a stored `compile --json` output directly — no compile, no project source needed (bare dir + credentials works). What runs is exactly what was compiled (environment overrides are baked in — `--environment` with `--graph` is rejected; selection flags still apply). This is the release-artifact pattern: compile once, run the identical graph later/elsewhere.
 
@@ -246,12 +247,31 @@ config { type: "import", dataset: "oa_ext", name: "openaddresses_us",
 - **`export`** writes a query's result to a file — a terminal *sink* (nothing can `ref()` it).
 - `validate` marks imports SKIPPED (file columns unknown pre-run) and downstream models BLOCKED — expected, not a bug. Hosted SQLAnvil Cloud rejects *local* paths at compile (ephemeral runner disk) — use object-store URIs there.
 
+### 17. Python script actions (`python:` in actions.yaml, ≥1.20)
+
+Execution-time Python steps as DAG nodes — the staging/glue slot (download, unzip, API call) before an `import`. Declared in `definitions/actions.yaml` (NOT a new file extension; NOT compile-time like `.js` — compile never runs Python):
+```yaml
+actions:
+  - python:
+      name: fetch_data
+      file: loader/fetch_data.py             # plain .py, path from project root
+      requirements: loader/requirements.txt   # optional; VALIDATED, never installed
+      pythonVersion: ">=3.11"                 # optional PEP 440 specifier
+      venv: .venv                             # optional; that venv's interpreter runs it
+      dependencies: ["upstream_action"]
+```
+- Contract: cwd = project dir; env `SA_VARS` (vars as JSON) + `SA_ACTION_NAME`; `args:` → `sys.argv[1:]`; exit 0 = success; 30-min default timeout (`timeoutMillis`).
+- **No warehouse credentials are injected** — the script stages FILES; a downstream `type: "import"` with `dependencyTargets: [{name: "fetch_data"}]` loads them. Never have the script write to the warehouse itself.
+- The user owns the environment (pip/uv install is their job); `sqlanvil validate` verifies it — never installs. A failing script BLOCKs dependents.
+- Hosted SQLAnvil Cloud rejects script actions at compile — local CLI / BYO CI only.
+- `python:` is sugar for the language-neutral `script: { language: "python", ... }` (proto fields: `filename`, `depsFile`, `runtimeVersion`, `envRoot`).
+
 ## MySQL / MariaDB (`warehouse: mysql`)
 
 One adapter serves **both MySQL 8 and MariaDB 11** — same `warehouse: mysql`, same generated SQL (MariaDB-specific features ride through `operations`). The MySQL surface is **deliberately smaller** than Postgres and several deltas above **invert** — read this before authoring a MySQL project.
 
 **Config & credentials**
-- `workflow_settings.yaml`: `warehouse: mysql`. `defaultDataset` = the MySQL **database** (MySQL has no schema-vs-database split — "schema" *is* the database). `defaultAssertionDataset` is a separate database. Pin the current core (`sqlanvilCoreVersion: 1.19.0`; MySQL warehouse needs ≥1.5, full `mysql:{}` block ≥1.19).
+- `workflow_settings.yaml`: `warehouse: mysql`. `defaultDataset` = the MySQL **database** (MySQL has no schema-vs-database split — "schema" *is* the database). `defaultAssertionDataset` is a separate database. Pin the current core (`sqlanvilCoreVersion: 1.20.0`; MySQL warehouse needs ≥1.5, full `mysql:{}` block ≥1.19).
 - `.df-credentials.json`: flat **`MysqlConnection`** — exact fields `host port database user password sslMode`. **No `defaultSchema`** (unlike Postgres). `sslMode`: `"disable"` (default/local) or `"require"`. Default port `3306`. Compiled identifiers are two-part backticks `` `db`.`table` `` (not BigQuery's single dotted-backtick, not Postgres double-quotes).
 
 **The inversions — do NOT carry the Postgres rules over**
