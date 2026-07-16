@@ -152,6 +152,8 @@ sqlanvil test      <projectDir> --credentials ...
 ```
 Install with `npm i -g @sqlanvil/cli`. (Working from a sqlanvil repo checkout instead of the installed CLI? Use `./scripts/run <verb>` in place of `sqlanvil <verb>`.)
 
+**Migrating a whole Dataform project?** `sqlanvil migrate-dataform <srcDir> <outDir>` (≥1.22) converts it: the source dir is READ-ONLY, declarations become per-project runner-extract connections, targets get safe rewrites + inline `SQLANVIL-MIGRATE:` markers, and `migration-report.{md,json}` carries the to-do list (`validate` is the completion loop). Don't hand-translate file-by-file — run the converter, then work the report.
+
 **`validate` / `run --dry-run` (≥ 1.9):** walks the DAG in dependency order, `EXPLAIN`-checks each model against the live warehouse in a throwaway shadow schema (empty stubs let downstream `${ref()}`s resolve), and reports **PASS / FAILURE / BLOCKED** (blocked = only an upstream failed) / SKIPPED (operations, imports). `run --dry-run` on Postgres/Supabase/MySQL now *validates* — it no longer silently executes. Any FAILURE/BLOCKED exits non-zero. Python script actions (≥1.20) get an env check instead of EXPLAIN — interpreter vs `pythonVersion`, requirements vs installed packages, syntax — without executing the script.
 
 **`run --graph <file>` (≥ 1.17):** executes a stored `compile --json` output directly — no compile, no project source needed (bare dir + credentials works). What runs is exactly what was compiled (environment overrides are baked in — `--environment` with `--graph` is rejected; selection flags still apply). This is the release-artifact pattern: compile once, run the identical graph later/elsewhere.
@@ -225,7 +227,9 @@ config {
   columnTypes: { zip_code: "text", internal_point_lat: "float8", internal_point_lon: "float8" }
 }
 ```
-A connection-tagged declaration with no `columnTypes` is a **compile error** — don't omit them.
+Missing `columnTypes`: a **compile error** in fdw mode; on runner-extract (≥1.22) it COMPILES and the extract **fails at run time** with the exact `introspect` command to fix it — either way, don't omit them.
+
+**`schema:` on a connection-tagged declaration (≥1.22)** overrides the connection's dataset/database AND names the schema the extract/foreign table lands in (`schema: "ods", name: "zip_code"` → `ods.zip_code`; one connection per source project serves many datasets; schema-qualified `${ref("ods", "zip_code")}` works). No `schema:` = the legacy `<connection>_ext.<name>` landing spot.
 
 **Step 3 — generate that declaration instead of hand-writing it** (preferred):
 ```bash
