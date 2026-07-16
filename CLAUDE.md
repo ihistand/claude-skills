@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a **skills development repository** for creating and testing Claude Code superpowers skills. Skills are reusable process documentation that enforce discipline and best practices across different domains.
 
 **Skills in this repo**:
-- `sqlanvil-engineering-fundamentals` — the delta guide for sqlanvil data projects (Postgres/Supabase/MySQL); mirrors `AGENTS.md` in the sqlanvil repo and is synced on each sqlanvil release (currently 1.23.0). Installed live via symlink: `~/.claude/skills/sqlanvil-engineering-fundamentals` → this repo.
+- `sqlanvil-engineering-fundamentals` — **MOVED 2026-07-16** to the public canonical repo [SQLAnvil/agent-skills](https://github.com/SQLAnvil/agent-skills) (`npx skills add SQLAnvil/agent-skills`; local checkout `~/projects-ivan/sqlanvil-agent-skills`, symlink retargeted there). The directory here is a pointer stub only.
 - `dataform-engineering-fundamentals` — BigQuery Dataform TDD/safety/documentation discipline (the original skill here).
 - `acuantia-dataform`, `stl-generator` — project-specific skills.
 
