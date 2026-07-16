@@ -18,11 +18,12 @@ This is a **skills development repository** for creating and testing Claude Code
 ## Repository Structure
 
 ```
-skills/
-├── CLAUDE.md                                  # This file
-├── dataform-engineering-fundamentals/         # Main skill directory
-│   ├── SKILL.md                              # Complete skill definition (~3,200 words)
-│   └── PR_DESCRIPTION.md                     # Pull request documentation
+claude-skills/
+├── CLAUDE.md / GEMINI.md / README.md
+├── sqlanvil-engineering-fundamentals/SKILL.md   # sqlanvil delta guide (synced per engine release)
+├── dataform-engineering-fundamentals/SKILL.md   # BigQuery Dataform TDD discipline (original skill)
+├── acuantia-dataform/                           # project-specific
+└── stl-generator/                               # project-specific
 ```
 
 ## Skill Development Workflow
@@ -80,17 +81,9 @@ Domain-specific adaptation of TDD principles for Google Cloud Dataform (BigQuery
 
 ### Key Files
 
-**SKILL.md** (24KB): Complete skill definition with:
-- Non-negotiable safety practices (6 rules)
-- Architecture patterns (layering, incremental processing, source declarations)
-- TDD workflow adapted for Dataform
-- Documentation standards (columns: {} requirement, source documentation)
-- Common mistakes (10 examples with corrections)
-- Rationalization table (12 excuses with reality checks)
-- Red flags (14 warning signs)
-- Time pressure protocol
+**SKILL.md** (~356 lines; last substantive overhaul 2026-06-06 — cut redundancy, fixed uniqueKey/ref(), added incremental internals): non-negotiable safety practices (6), architecture patterns (layering, incremental internals, assertions, .sqlx declarations), TDD workflow, documentation standards (`columns: {}`), quick-reference commands, rationalization table, red flags, time-pressure protocol, troubleshooting. Cross-links to `sqlanvil-engineering-fundamentals` for Postgres/Supabase work.
 
-**PR_DESCRIPTION.md**: Pull request documentation including testing results, context, and contribution instructions.
+**PR_DESCRIPTION.md**: not currently present — write it if/when contributing the skill upstream (documents testing approach and results).
 
 ### Editing the Skill
 
@@ -121,7 +114,7 @@ cd ~/.claude/plugins/cache/superpowers
 gh pr create \
   --repo obra/superpowers \
   --title "Add dataform-engineering-fundamentals skill" \
-  --body-file ~/projects/skills/dataform-engineering-fundamentals/PR_DESCRIPTION.md
+  --body-file ~/projects-ivan/claude-skills/dataform-engineering-fundamentals/PR_DESCRIPTION.md
 ```
 
 **Alternative**: Manually create PR at https://github.com/obra/superpowers/pull/new/[branch-name]
@@ -184,7 +177,7 @@ The `dataform-engineering-fundamentals` skill was developed against the real-wor
 
 ## Git Workflow
 
-**Author**: Ivan Histand <ihistand@rotoplas.com>
+**Author**: Ivan Histand <ivan@badgeretl.com>
 **Remote**: Use `origin` (not `github`)
 
 ### Standard Commit Pattern
