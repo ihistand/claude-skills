@@ -9,7 +9,8 @@ This is a **skills development repository** for creating and testing Claude Code
 **Skills in this repo**:
 - `sqlanvil-engineering-fundamentals` — **MOVED 2026-07-16** to the public canonical repo [SQLAnvil/agent-skills](https://github.com/SQLAnvil/agent-skills) (`npx skills add SQLAnvil/agent-skills`; local checkout `~/projects-ivan/sqlanvil-agent-skills`, symlink retargeted there). The directory here is a pointer stub only.
 - `dataform-engineering-fundamentals` — BigQuery Dataform TDD/safety/documentation discipline (the original skill here).
-- `acuantia-dataform`, `stl-generator` — project-specific skills.
+- `stl-generator` — 3D-printable woodworking jigs via CadQuery.
+- `acuantia-dataform` — **REMOVED 2026-08-22**: client-specific, so it doesn't belong in a public repo. The canonical (and newer) copy is tracked in the client repo at `acuantia-sqlanvil/.claude/skills/acuantia-dataform/`.
 
 **Note**: this is the ONLY checkout of `ihistand/claude-skills` (consolidated 2026-07-04 at `~/projects-ivan/claude-skills`; gitignored inside the projects-ivan monorepo with its own git history). Commit/push skills here.
 
@@ -22,8 +23,7 @@ claude-skills/
 ├── CLAUDE.md / GEMINI.md / README.md
 ├── sqlanvil-engineering-fundamentals/SKILL.md   # sqlanvil delta guide (synced per engine release)
 ├── dataform-engineering-fundamentals/SKILL.md   # BigQuery Dataform TDD discipline (original skill)
-├── acuantia-dataform/                           # project-specific
-└── stl-generator/                               # project-specific
+└── stl-generator/                               # CadQuery jig generator (SKILL.md + references/ + scripts/)
 ```
 
 ## Skill Development Workflow

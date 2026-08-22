@@ -1,134 +1,50 @@
-# Claude Skills Development
+# claude-skills
 
-A repository for developing and testing [Claude Code](https://claude.com/claude-code) superpowers skills.
+[Agent Skills](https://agentskills.io) by Ivan Histand for Claude Code and other coding agents.
+Each skill is a `SKILL.md` that loads when its domain comes up and keeps the agent on a
+disciplined workflow — tests first, safe commands, no shortcuts under time pressure.
 
-## What are Skills?
+## Install
 
-Skills are reusable process documentation that enforce discipline and best practices across different domains. They provide specialized instructions to Claude Code agents, ensuring consistent workflows even under time pressure or exhaustion.
-
-**Key Characteristics**:
-- Discipline-enforcing, not just informational
-- Bulletproof against rationalization ("just this once", "too urgent")
-- Include red flags to catch deviations before they happen
-- Tested against pressure scenarios (deadlines, authority, exhaustion)
-
-## Repository Contents
-
-### dataform-engineering-fundamentals
-
-A comprehensive skill for BigQuery Dataform development that adapts TDD principles to data transformation pipelines.
-
-**Enforces**:
-- ✅ Test-driven development (write assertions before implementation)
-- ✅ Safety practices (`--schema-suffix dev`, `--dry-run`, validation queries)
-- ✅ Dependency management (ALWAYS `${ref()}`, NEVER hardcoded table paths)
-- ✅ Documentation standards (mandatory `columns: {}` blocks)
-- ✅ Proper architecture (layered structure, file naming conventions)
-- ✅ Looker integration patterns
-
-**Size**: ~3,200 words of discipline-enforcing guidance
-
-**Testing**: Validated using RED-GREEN-REFACTOR methodology with pressure scenarios
-
-## Project Structure
-
-```
-claude-skills/
-├── README.md                                  # This file
-├── CLAUDE.md                                  # Development guide for Claude Code
-├── dataform-engineering-fundamentals/
-│   ├── SKILL.md                              # Complete skill definition
-│   └── PR_DESCRIPTION.md                     # Pull request documentation
-├── acuantia-dataform/
-│   └── SKILL.md                              # Acuantia-specific Dataform patterns
-└── stl-generator/
-    ├── SKILL.md                              # 3D printable jig generator skill
-    ├── references/                            # Design guidelines and patterns
-    └── scripts/                               # Pre-built CadQuery scripts
-```
-
-## Development Workflow
-
-### Creating New Skills
-
-1. **Create skill directory**:
-   ```bash
-   mkdir -p new-skill-name
-   cd new-skill-name
-   ```
-
-2. **Create SKILL.md with frontmatter**:
-   ```markdown
-   ---
-   name: new-skill-name
-   description: Brief description for skill selection system
-   ---
-
-   # Skill Title
-
-   [Comprehensive instructions...]
-   ```
-
-3. **Test thoroughly** using `superpowers:testing-skills-with-subagents`:
-   - RED phase: Test WITHOUT skill to capture failures
-   - GREEN phase: Write skill addressing failures
-   - REFACTOR phase: Test WITH skill to verify effectiveness
-
-### Contributing Upstream
-
-When ready to contribute to the main [superpowers repository](https://github.com/obra/superpowers):
+With the [`skills`](https://skills.sh) CLI (works for Claude Code, Cursor, Codex, and others):
 
 ```bash
-cd ~/.claude/plugins/cache/superpowers
-
-gh pr create \
-  --repo obra/superpowers \
-  --title "Add [skill-name] skill" \
-  --body "Brief description of the skill and its purpose"
+npx skills add ihistand/claude-skills                 # pick from the list
+npx skills add ihistand/claude-skills -s dataform-engineering-fundamentals
 ```
 
-## Skill Development Principles
+Or by hand — Claude Code reads skills from `~/.claude/skills/<name>/SKILL.md` (user-wide) or
+`.claude/skills/<name>/SKILL.md` (one project):
 
-### Must-Haves
+```bash
+git clone https://github.com/ihistand/claude-skills
+ln -s "$PWD/claude-skills/dataform-engineering-fundamentals" ~/.claude/skills/
+```
 
-- **Bulletproof against rationalization**: Counter common excuses explicitly
-- **Red flags section**: Catch agents about to deviate from the process
-- **Common mistakes**: Show wrong vs. correct patterns side-by-side
-- **Time pressure protocol**: Work especially when tired/rushed
-- **Real-world validation**: Test against actual production scenarios
+## Skills
 
-### Quality Checklist
+| Skill | Use it when |
+|-------|-------------|
+| [dataform-engineering-fundamentals](dataform-engineering-fundamentals/) | Writing or troubleshooting BigQuery Dataform: SQLX models, source declarations, assertions. Enforces TDD (assertions before implementation), `--schema-suffix dev` + `--dry-run` before anything touches production, `${ref()}` over hardcoded table paths, mandatory `columns: {}` documentation, and layered architecture. Cross-links to the SQLAnvil skill for Postgres/Supabase work. |
+| [stl-generator](stl-generator/) | Designing 3D-printable woodworking jigs and fixtures (circle-cutting guides, angle wedges, spacing blocks, alignment fixtures) with CadQuery. Ships reference patterns and ready scripts; tuned for an Elegoo Neptune 4 Pro. |
 
-Before submitting:
-- ☐ Tested with RED-GREEN-REFACTOR cycle
-- ☐ No new rationalizations emerged during testing
-- ☐ Cross-reference integration verified (related skills work together)
-- ☐ Common mistakes section includes corrections
-- ☐ Red flags section catches deviation attempts
-- ☐ Rationalization table addresses common excuses
-- ☐ Description accurately summarizes enforcement areas
+Working with SQLAnvil instead of Dataform? That skill lives in its own repo:
+`npx skills add SQLAnvil/agent-skills` ([SQLAnvil/agent-skills](https://github.com/SQLAnvil/agent-skills)).
+The `sqlanvil-engineering-fundamentals/` folder here is only a pointer to it.
 
-## Related Resources
+The Dataform skill is also bundled in the
+[dataform-toolkit](https://github.com/ihistand/claude-plugins) Claude Code plugin, together with
+`/dataform-test`, `/dataform-deploy`, `/dataform-new-table`, and `/dataform-etl` slash commands.
 
-- **Main superpowers repo**: https://github.com/obra/superpowers
-- **Claude Code**: https://claude.com/claude-code
-- **Development guide**: See [CLAUDE.md](CLAUDE.md) for detailed instructions
+## How these skills are written
 
-## Skills in This Repository
-
-| Skill | Description | Status |
-|-------|-------------|--------|
-| [dataform-engineering-fundamentals](dataform-engineering-fundamentals/) | Generic BigQuery Dataform TDD workflow enforcement (suitable for upstream contribution) | ✅ Complete |
-| [acuantia-dataform](acuantia-dataform/) | Acuantia-specific Dataform patterns (extends dataform-engineering-fundamentals with ODS, Looker integration, dataset conventions) | ✅ Complete |
-| [stl-generator](stl-generator/) | Generate 3D printable STL files for woodworking jigs and fixtures using CadQuery (optimized for Elegoo Neptune 4 Pro) | ✅ Complete |
+They follow the [superpowers](https://github.com/obra/superpowers) approach: a skill is process
+documentation that enforces discipline, not a reference page. Each one carries explicit counters to
+"just this once" rationalizations, a red-flags section that catches an agent about to deviate,
+wrong-vs-right examples, and a time-pressure protocol. Skills are tested RED-GREEN-REFACTOR with
+subagents — scenarios run without the skill to capture the failures, then with it to confirm they
+stop. See [CLAUDE.md](CLAUDE.md) for the development workflow.
 
 ## Author
 
-**Ivan Histand** - Sr Data Architect
-
-- GitHub: [@ihistand](https://github.com/ihistand)
-- Email: ihistand@rotoplas.com
-
-## License
-
-Skills are intended for contribution to the [obra/superpowers](https://github.com/obra/superpowers) repository, which uses its own license terms.
+Ivan Histand — [ivan@histand.net](mailto:ivan@histand.net) · [github.com/ihistand](https://github.com/ihistand) · [histand.net](https://histand.net)
