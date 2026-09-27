@@ -10,7 +10,7 @@ This is a **skills development repository** for creating and testing Claude Code
 - `sqlanvil-engineering-fundamentals` — **MOVED 2026-07-16** to the public canonical repo [SQLAnvil/agent-skills](https://github.com/SQLAnvil/agent-skills) (`npx skills add SQLAnvil/agent-skills`; local checkout `~/projects-ivan/sqlanvil/agent-skills`, symlink retargeted there). The directory here is a pointer stub only.
 - `dataform-engineering-fundamentals` — **REMOVED 2026-09-15**; the canonical copy lives in the acuantia-gcp-dataform repo.
 - `stl-generator` — 3D-printable woodworking jigs via CadQuery.
-- `acuantia-dataform` — **REMOVED 2026-08-22**: client-specific, so it doesn't belong in a public repo. The canonical (and newer) copy is tracked in the client repo at `acuantia-sqlanvil/.claude/skills/acuantia-dataform/`.
+- `acuantia-dataform` — **REMOVED 2026-08-22**: client-specific, so it doesn't belong in a public repo. It now ships in the acuantia-dataform plugin (the production repo dropped its in-repo copy 2026-09-20).
 
 **Note**: this is the ONLY checkout of `ihistand/claude-skills` (consolidated 2026-07-04 at `~/projects-ivan/claude-skills`; gitignored inside the projects-ivan monorepo with its own git history). Commit/push skills here.
 
