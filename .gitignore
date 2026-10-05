@@ -1,2 +1,5 @@
 # Windows Zone.Identifier metadata files
 *:Zone.Identifier
+
+# Python bytecode
+__pycache__/

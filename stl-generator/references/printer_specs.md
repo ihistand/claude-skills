@@ -1,90 +1,77 @@
-# Elegoo Neptune 4 Pro - Printer Specifications
+# Printer Profile and Design Constraints
 
-## Build Volume
-- **X-axis**: 225 mm
-- **Y-axis**: 225 mm  
-- **Z-axis**: 265 mm
-- **Effective print area**: ~220 x 220 x 260 mm (accounting for margins)
+The deliverable is an STL, so the printer only matters in two places: whether the part
+fits the bed, and the clearances a nozzle and material can hold. The defaults below
+are for the printer these were tested on, an **Elegoo Neptune 4 Pro**, with a 0.4 mm
+nozzle and PLA. For another printer, pass `--bed XxYxZ` to any script (or `parse_bed`
+in custom code) and treat the clearances as a starting point for a test print.
 
-## Print Settings
-- **Layer height**: 0.2 mm (standard)
-- **Nozzle diameter**: 0.4 mm (standard)
-- **Minimum wall thickness**: 0.8 mm (2 perimeters)
-- **Maximum overhang angle**: 45° without supports
-- **Bridging capability**: ~30 mm for PLA
+## Build volume
+- Nominal: 225 x 225 x 265 mm
+- **Usable (the default): 220 x 220 x 260 mm**, leaving room for a skirt or brim
+- A long part that misses the bed straight can still fit on the diagonal (up to about
+  300 mm for a narrow arm); `export_checked` tries rotations automatically.
 
-## Material Properties (PLA)
-- **Typical use case**: Functional jigs and fixtures
-- **Layer adhesion**: Good at 0.2mm layers
-- **Dimensional accuracy**: ±0.2 mm
-- **Heat resistance**: Up to ~60°C
-- **Recommended wall count**: 3-4 for structural parts
+## Print settings assumed
+- Layer height 0.2 mm, nozzle 0.4 mm, PLA
+- 3 to 4 perimeters and 20 to 40% infill for jigs; 100% for small parts that take
+  clamping pressure, such as spacing blocks
+- PLA softens around 55 to 60 C: not for jigs left in a hot car or near a heat gun
 
-## Design Constraints for Woodworking Jigs
+## Accuracy you can rely on
+- XY: about +/-0.1 to 0.2 mm. Z: the nearest layer (0.2 mm steps), so a height that
+  is not a multiple of the layer height prints a little over or under.
+- **Profiles drawn in XY are the most accurate.** That is why the angle wedge prints
+  on its side: its slope is traced by the nozzle instead of stair-stepped by layers.
+- Vertical holes (axis along Z) print round but slightly undersized; horizontal holes
+  sag at the top. Put precision holes vertical.
+- The first layer spreads slightly ("elephant's foot"). For a reference face on the bed,
+  a 0.4 mm chamfer on the bottom edges, or the slicer's elephant-foot compensation,
+  keeps it from flaring.
 
-### General Guidelines
-1. **Minimum feature size**: 1.0 mm (2.5x nozzle diameter)
-2. **Hole diameters**: Add 0.3-0.5 mm clearance for hardware
-3. **Text depth**: 0.4-0.6 mm for embossed text
-4. **Fillet radius**: Minimum 1.0 mm for internal corners
-5. **Wall thickness**: 2.0-3.0 mm minimum for structural integrity
+## Clearances
+| Fit | Add to the nominal size | Use for |
+|---|---|---|
+| Press fit | -0.1 to 0.0 mm | pins that should stay put |
+| Slide fit | +0.1 to +0.2 mm | pivot pins, guide bushings |
+| Loose fit | +0.3 to +0.5 mm | screws and bolts passing through |
 
-### Functional Tolerances
-- **Tight fit**: -0.1 to 0.0 mm (for press-fit parts)
-- **Slide fit**: +0.1 to +0.2 mm (for moving parts)
-- **Loose fit**: +0.3 to +0.5 mm (for assembly clearance)
+Fit is printer-specific. For anything that must fit, print a small test coupon of
+just that feature first (a 10 mm-thick plate with the hole) before the full jig.
 
-### Specific to Woodworking Jigs
-1. **Base stability**: Minimum 5mm thickness for flat reference surfaces
-2. **Router bit clearance**: 10-12mm slots for standard 1/4" and 1/2" bits
-3. **Clamp access**: 25mm+ clearance for standard clamps
-4. **Screw holes**: 
-   - M3: 3.3 mm hole
-   - M4: 4.3 mm hole  
-   - M5: 5.3 mm hole
-   - #8 wood screw: 4.5 mm hole
-5. **Material contact surfaces**: Smooth finish, avoid text/features that mar wood
+## Minimums
+- Wall: 0.8 mm is two perimeters and prints; 2 to 3 mm for anything that takes load
+- Feature: 1 mm; holes: 2 mm diameter
+- Engraved text: at least 3 mm tall, 0.4 to 0.6 mm deep
+- Flat reference base: at least 5 mm thick so it stays flat
+- Overhang: up to 45 degrees without supports; bridges up to about 30 mm
 
-### Print Orientation Recommendations
-- **Maximum strength**: Layer lines perpendicular to load direction
-- **Best surface finish**: Print face-down on bed
-- **Overhangs**: Orient to minimize supports (keep < 45° angle)
-- **Functional surfaces**: Print against bed for best flatness
+## Hardware clearance holes
+| Hardware | Hole |
+|---|---|
+| M3 | 3.3 mm |
+| M4 | 4.3 mm |
+| M5 | 5.3 mm |
+| M6 | 6.4 mm |
+| #6 wood screw | 3.7 mm |
+| #8 wood screw | 4.5 mm |
+| #10 wood screw | 5.1 mm |
+| 1/4"-20 bolt | 6.6 mm |
 
-### Support Requirements
-- **Angles > 45°**: Require supports
-- **Bridging**: Keep spans < 30 mm
-- **Support gap**: 0.2 mm for easy removal
-- **Avoid supports on**: Functional reference surfaces
+Countersink diameter: about twice the screw diameter (9 mm for a #8 flat-head).
 
-## Common Hardware Sizes (for reference holes)
+## Router and tool clearances
+- Bit clearance slot or hole: the bit's **cutting** diameter plus at least 2 mm
+  (the shank is irrelevant; the cutter is what passes through). A 1/4" (6.35 mm)
+  straight bit needs 8.5 mm or more; a 1/2" (12.7 mm) bit needs 15 mm or more.
+- Template guide bushings: 5/8" (15.9 mm) OD is the most common; match the user's set.
+- Router sub-base screw patterns vary by model. Ask for the measured bolt-circle
+  diameter and screw count; never guess one.
+- Clamp access: 25 mm or more of clear space for a clamp jaw.
 
-### Metric Hardware
-- M3 x 0.5: 3.3 mm clearance hole
-- M4 x 0.7: 4.3 mm clearance hole
-- M5 x 0.8: 5.3 mm clearance hole
-- M6 x 1.0: 6.4 mm clearance hole
+## Rough print times at 0.2 mm
+- Small (50 x 50 x 10 mm): 1 to 2 hours
+- Medium (100 x 100 x 20 mm): 4 to 6 hours
+- Large (200 x 200 x 30 mm): 12 to 18 hours
 
-### Imperial Hardware  
-- #6 wood screw: 3.7 mm clearance hole
-- #8 wood screw: 4.5 mm clearance hole
-- #10 wood screw: 5.1 mm clearance hole
-- 1/4"-20: 6.6 mm clearance hole
-
-### Router Bits (for slot sizing)
-- 1/4" shank: 6.35 mm (use 7-8 mm slots)
-- 1/2" shank: 12.7 mm (use 13-14 mm slots)
-- Template guides: Typically 5/8" (16mm) OD
-
-## Material Usage Estimation
-- **PLA density**: ~1.24 g/cm³
-- **Typical infill**: 20% for jigs (good strength/material balance)
-- **Wall lines**: 3-4 perimeters
-- **Top/bottom layers**: 4-5 layers (0.8-1.0 mm)
-
-## Print Time Estimation (rough guidelines)
-- Small jig (50x50x10mm): ~1-2 hours
-- Medium jig (100x100x20mm): ~4-6 hours
-- Large jig (200x200x30mm): ~12-18 hours
-
-*These are estimates; actual time depends on geometry complexity and print settings.*
+These are ballpark figures; the slicer's estimate is the one to quote.

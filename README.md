@@ -24,7 +24,7 @@ ln -s "$PWD/claude-skills/stl-generator" ~/.claude/skills/
 
 | Skill | Use it when |
 |-------|-------------|
-| [stl-generator](stl-generator/) | Designing 3D-printable woodworking jigs and fixtures (circle-cutting guides, angle wedges, spacing blocks, alignment fixtures) with CadQuery. Ships reference patterns and ready scripts; tuned for an Elegoo Neptune 4 Pro. |
+| [stl-generator](stl-generator/) | Designing 3D-printable woodworking jigs and fixtures (circle-cutting trammels, angle wedges, spacing blocks, drilling guides, alignment fixtures) with [build123d](https://github.com/gumyr/build123d). Ships tested ready scripts and a print-readiness check that refuses STLs that would misprint. Defaults to an Elegoo Neptune 4 Pro's bed; `--bed` sets any other. Needs Python with build123d (`uv run --with build123d` works with no setup). |
 
 ### Moved elsewhere
 

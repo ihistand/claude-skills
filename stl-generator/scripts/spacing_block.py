@@ -1,137 +1,131 @@
 #!/usr/bin/env python3
 """
-Generate precision spacing blocks for assembly and alignment.
-Perfect for consistent spacing in lampshade frames and joinery setup.
+Precision spacing / setup blocks for consistent gaps, reveals, and bit-height setup.
+
+The top and bottom faces are the measuring faces, so they stay flat: the label is
+engraved (height is unchanged), the finger scallops run vertically through the
+sides, and the orientation mark is a chamfer on one vertical corner.
+
+    python spacing_block.py 10                       # one 10 mm block, 50 x 30 footprint
+    python spacing_block.py 10 --width 40 --depth 25 -o spacer_10mm.stl
+    python spacing_block.py --set 5,10,15,20 -o spacer_set.stl
 """
 
-import cadquery as cq
-import sys
+import argparse
+import math
+
+from build123d import (
+    Align,
+    Axis,
+    Box,
+    BuildPart,
+    BuildSketch,
+    Cylinder,
+    Locations,
+    Mode,
+    Plane,
+    Pos,
+    Text,
+    chamfer,
+    extrude,
+)
+
+from printcheck import LAYER_HEIGHT, add_bed_arg, export_checked
+
+GAP = 5.0  # between blocks in a set
 
 
-def create_spacing_block(
-    width: float,
-    depth: float,
-    height: float,
-    add_finger_relief: bool = True,
-    add_label: bool = True,
-):
-    """
-    Create a spacing/setup block.
-    
-    Args:
-        width: Block width (mm)
-        depth: Block depth (mm)  
-        height: Block height/thickness (mm)
-        add_finger_relief: Add cutouts for easy pickup
-        add_label: Emboss dimensions on top
-    """
-    # Create main block
-    block = cq.Workplane("XY").box(width, depth, height)
-    
-    if add_finger_relief:
-        # Add semicircular cutouts on opposite sides for grip
-        relief_diameter = min(height * 1.2, 20)
-        
-        for side in [-1, 1]:
-            relief = (
-                cq.Workplane("YZ")
-                .workplane(offset=side * width / 2)
-                .center(0, -height / 2)
-                .circle(relief_diameter / 2)
-                .extrude(10)
-            )
-            block = block.cut(relief)
-    
-    if add_label:
-        # Emboss dimension label on top surface
-        label_text = f"{height}mm"
-        try:
-            block = (
-                block.faces(">Z")
-                .workplane()
-                .text(
-                    label_text,
-                    fontsize=min(6, height / 2),
-                    distance=-0.5,
-                    halign="center",
-                    valign="center",
-                )
-            )
-        except:
-            pass  # Text might fail in some CadQuery versions
-    
-    # Add orientation marker (small notch on one corner)
-    marker = (
-        cq.Workplane("XY")
-        .workplane(offset=height / 2)
-        .center(-width / 2 + 3, -depth / 2 + 3)
-        .rect(3, 3)
-        .extrude(2)
-    )
-    block = block.cut(marker)
-    
-    return block
+def fmt(value):
+    """10.0 -> '10', 12.5 -> '12.5'"""
+    return f"{value:g}"
 
 
-def create_spacing_set(heights: list, width: float = 50.0, depth: float = 30.0):
-    """
-    Create a set of spacing blocks with different heights.
-    Arranged in a row for printing.
-    
-    Args:
-        heights: List of heights in mm
-        width: Block width (mm)
-        depth: Block depth (mm)
-    """
-    spacing = 5  # Gap between blocks
-    result = None
-    x_offset = 0
-    
-    for height in sorted(heights):
-        block = create_spacing_block(width, depth, height)
-        block = block.translate((x_offset, 0, 0))
-        
-        if result is None:
-            result = block
-        else:
-            result = result.union(block)
-        
-        x_offset += width + spacing
-    
+def spacing_block(height, width=50.0, depth=30.0, label=True):
+    """One block resting on z=0, `height` mm tall between its measuring faces."""
+    scallop_r = min(depth * 0.25, 8.0)
+    with BuildPart() as block:
+        Box(width, depth, height, align=(Align.CENTER, Align.CENTER, Align.MIN))
+
+        # Finger scallops through the full height on both long sides.
+        with Locations((0, depth / 2), (0, -depth / 2)):
+            Cylinder(scallop_r, height, align=(Align.CENTER, Align.CENTER, Align.MIN), mode=Mode.SUBTRACT)
+
+        # Orientation mark: chamfer the front-left vertical corner.
+        corner = (
+            block.edges()
+            .filter_by(Axis.Z)
+            .sort_by(Axis.X)[0:2]
+            .sort_by(Axis.Y)[0]
+        )
+        chamfer(corner, length=min(3.0, width / 10, depth / 10))
+
+        if label:
+            # Engraved, so the block's height stays exact. Shallow on thin blocks.
+            engrave = min(0.6, height / 4)
+            font = min(8.0, depth - 2 * scallop_r - 2, width / 5)
+            if font >= 3.0:
+                with BuildSketch(Plane.XY.offset(height)):
+                    Text(f"{fmt(height)}", font_size=font)
+                extrude(amount=-engrave, mode=Mode.SUBTRACT)
+            else:
+                print(f"  note: {fmt(height)} mm block is too small to label legibly; left blank")
+    return block.part
+
+
+def spacing_set(heights, width=50.0, depth=30.0, bed_x=220.0):
+    """Several blocks laid out in rows that fit the bed, all on z=0."""
+    per_row = max(1, int((bed_x + GAP) // (width + GAP)))
+    parts = []
+    for i, h in enumerate(sorted(heights)):
+        row, col = divmod(i, per_row)
+        parts.append(Pos(col * (width + GAP), row * (depth + GAP), 0) * spacing_block(h, width, depth))
+    result = parts[0]
+    for p in parts[1:]:
+        result = result + p  # disjoint solids, one STL
     return result
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: spacing_block.py <height_mm> [width_mm] [depth_mm] [output.stl]")
-        print("   Or: spacing_block.py set <h1>,<h2>,<h3>... [output.stl]")
-        print()
-        print("Examples:")
-        print("  spacing_block.py 10 50 30 spacer_10mm.stl")
-        print("  spacing_block.py set 5,10,15,20 spacer_set.stl")
-        sys.exit(1)
-    
-    if sys.argv[1].lower() == "set":
-        # Create a set of blocks
-        if len(sys.argv) < 3:
-            print("Error: Must specify heights after 'set'")
-            sys.exit(1)
-        
-        heights = [float(h) for h in sys.argv[2].split(",")]
-        output = sys.argv[3] if len(sys.argv) > 3 else "spacing_set.stl"
-        
-        print(f"Generating spacing block set: {heights} mm")
-        result = create_spacing_set(heights)
+def warn_layer_multiple(heights):
+    for h in heights:
+        layers = h / LAYER_HEIGHT
+        if abs(layers - round(layers)) > 1e-6:
+            lo, hi = math.floor(layers) * LAYER_HEIGHT, math.ceil(layers) * LAYER_HEIGHT
+            print(
+                f"  warning: {fmt(h)} mm is not a multiple of the {LAYER_HEIGHT} mm layer height; "
+                f"at that layer height it prints as {fmt(round(lo, 3))} or {fmt(round(hi, 3))} mm"
+            )
+
+
+class HelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    """Keep the docstring's layout and show each option's default."""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=HelpFormatter)
+    parser.add_argument("height", type=float, nargs="?", help="block height in mm (the spacing it sets)")
+    parser.add_argument("--set", help="comma-separated heights for a matched set, e.g. 5,10,15,20")
+    parser.add_argument("--width", type=float, default=50.0)
+    parser.add_argument("--depth", type=float, default=30.0)
+    parser.add_argument("-o", "--output")
+    add_bed_arg(parser)
+    args = parser.parse_args()
+
+    if args.set:
+        heights = [float(h) for h in args.set.split(",")]
+        output = args.output or "spacer_set_" + "-".join(fmt(h) for h in sorted(heights)) + "mm.stl"
+        print(f"Spacing block set: {', '.join(fmt(h) for h in sorted(heights))} mm")
+        part = spacing_set(heights, args.width, args.depth, args.bed[0])
+    elif args.height:
+        heights = [args.height]
+        output = args.output or f"spacer_{fmt(args.height)}mm.stl"
+        print(f"Spacing block: {fmt(args.width)} x {fmt(args.depth)} x {fmt(args.height)} mm")
+        part = spacing_block(args.height, args.width, args.depth)
     else:
-        # Create single block
-        height = float(sys.argv[1])
-        width = float(sys.argv[2]) if len(sys.argv) > 2 else 50.0
-        depth = float(sys.argv[3]) if len(sys.argv) > 3 else 30.0
-        output = sys.argv[4] if len(sys.argv) > 4 else f"spacer_{int(height)}mm.stl"
-        
-        print(f"Generating spacing block: {width}x{depth}x{height} mm")
-        result = create_spacing_block(width, depth, height)
-    
-    # Export to STL
-    cq.exporters.export(result, output)
-    print(f"✓ STL saved to: {output}")
+        parser.error("give a height, or --set h1,h2,...")
+
+    warn_layer_multiple(heights)
+    export_checked(part, output, args.bed)
+
+
+if __name__ == "__main__":
+    main()
