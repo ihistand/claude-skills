@@ -26,14 +26,17 @@ ln -s "$PWD/claude-skills/stl-generator" ~/.claude/skills/
 |-------|-------------|
 | [stl-generator](stl-generator/) | Designing 3D-printable woodworking jigs and fixtures (circle-cutting trammels, angle wedges, spacing blocks, drilling guides, alignment fixtures) with [build123d](https://github.com/gumyr/build123d). Ships tested ready scripts and a print-readiness check that refuses STLs that would misprint. Defaults to an Elegoo Neptune 4 Pro's bed; `--bed` sets any other. Needs Python with build123d (`uv run --with build123d` works with no setup). |
 
-### Moved elsewhere
+### Elsewhere
 
 - **sqlanvil-engineering-fundamentals** lives in its own public repo:
   `npx skills add SQLAnvil/agent-skills` ([SQLAnvil/agent-skills](https://github.com/SQLAnvil/agent-skills)).
   The `sqlanvil-engineering-fundamentals/` folder here is only a pointer to it.
-- **dataform-engineering-fundamentals** is no longer in this repo. It ships in the
-  [dataform-toolkit](https://github.com/ihistand/claude-plugins) Claude Code plugin, together with
-  `/dataform-test`, `/dataform-deploy`, `/dataform-new-table`, and `/dataform-etl` slash commands.
+- **dataform-engineering-fundamentals** was retired from this repo and from the
+  [ihistand/claude-plugins](https://github.com/ihistand/claude-plugins) marketplace in
+  September 2026, and is no longer published.
+- **stl-generator** is also packaged as the `stl-generator-toolkit` plugin in
+  [ihistand/claude-plugins](https://github.com/ihistand/claude-plugins), with
+  `/stl-circle-jig`, `/stl-angle-wedge`, `/stl-spacing-block`, and `/stl-generate` commands.
 
 ## How these skills are written
 
