@@ -2,7 +2,7 @@
 
 This skill's canonical home is now the public repo
 **https://github.com/SQLAnvil/agent-skills**
-(local checkout: `~/projects-ivan/sqlanvil-agent-skills`).
+(local checkout: `~/projects-ivan/sqlanvil/agent-skills`).
 
 Install anywhere with `npx skills add SQLAnvil/agent-skills`. Ivan's
 `~/.claude/skills/sqlanvil-engineering-fundamentals` symlink points at the
