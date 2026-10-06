@@ -1,11 +1,11 @@
 ---
 name: stl-generator
-description: Generate 3D-printable STL files for woodworking jigs and fixtures with build123d (Python CAD). Use when the user wants a circle-cutting trammel or lampshade-ring jig, an angle wedge, spacing or setup blocks, a drilling guide, a router template, an alignment or assembly fixture, or any custom 3D-printed woodworking aid. Ships ready scripts plus a print-readiness check that refuses STLs that would misprint. Default build volume is an Elegoo Neptune 4 Pro (220 x 220 x 260 mm usable), overridable per printer. Metric units.
+description: Generate 3D-printable STL files with build123d (Python CAD) for woodworking jigs and fixtures, and for replacement parts modeled from a measured original. Use when the user wants a circle-cutting trammel or lampshade-ring jig, an angle wedge, spacing or setup blocks, a drilling guide, a router template, an alignment or assembly fixture, a replacement threaded light globe or shade, or any custom 3D-printed jig or part copied from measurements. Ships ready scripts plus a print-readiness check that refuses STLs that would misprint and flags overhangs that need supports. Default build volume is an Elegoo Neptune 4 Pro (220 x 220 x 260 mm usable), overridable per printer. Metric units.
 ---
 
-# STL Generator for Woodworking Jigs
+# STL Generator for Jigs and Replacement Parts
 
-Design jigs as parametric build123d scripts and export STLs that print right the
+Design jigs and replacement parts as parametric build123d scripts and export STLs that print right the
 first time. The deliverable is the STL: the printer matters only for whether the part
 fits the bed and which clearances hold, and both are parameters.
 
@@ -24,7 +24,7 @@ into the skill's own folder.
 
 ## Ready scripts
 
-All three take `--bed XxYxZ` for a printer other than the default, `-o` for the output
+All of them take `--bed XxYxZ` for a printer other than the default, `-o` for the output
 name, and `--help` for every option and its default. The examples below shorten the
 command to `python scripts/...`; run them the uv way shown above. Each script is
 tested and ends in the print-readiness check, so its output needs no extra measuring.
@@ -72,6 +72,47 @@ Measuring faces stay flat (engraved label, side scallops, one chamfered corner a
 orientation mark). Every block in a set rests on the bed. Heights that are not a
 multiple of the 0.2 mm layer height get a warning, because they cannot print exactly.
 
+**`scripts/threaded_globe.py`**: a replacement threaded light globe (a hollow sphere
+on a threaded collar that screws into the fixture, like a porch-light "fitter" globe).
+
+```bash
+python scripts/threaded_globe.py --inches --diameter 5.700 --height 6.2 \
+    --crest 3.235 --root 3.110 --pitch 0.232 --collar 0.713 --thread-length 0.700 \
+    --bore 2.825
+python scripts/threaded_globe.py <same measurements> --collar-test   # print this first
+```
+
+Every dimension comes from the user's calipers (see "Replacement parts" below). The
+thread is rounded like glass threads, and `--clearance` (default 0.2 mm) takes a
+little off its diameters so the print screws in. By default the globe splits at
+the equator into two halves that join with a glued half-lap, each printed rim-down
+so its supports stand inside where they barely show; a hollow sphere cannot print
+whole without supports scarring its outside (`--one-piece` does it anyway).
+Always suggest `--collar-test` first: about a seventh of the plastic, and it proves the
+thread fits before committing to the full globe. Printed shades need an LED bulb; PETG softens near 80 C.
+For an outdoor fixture, ASA stands up to sun better than PETG. `--step` adds a STEP file.
+
+## Replacement parts from a measured original
+
+The original is the specification, so the measurements decide whether the part
+fits. Ask for caliper numbers; never estimate dimensions from a photo, which has no
+scale. Ask specifically for:
+
+- **Threads:** the diameter over the crests, the diameter in the bottom of a groove
+  (the root, measured on the part itself, not taken from the mating part), the pitch
+  measured across several crests and divided by the number of gaps, the ridge shape
+  (rounded or sharp), and the hand (does it screw in clockwise?).
+- **Every diameter that mates with something:** openings, collars, bores.
+- **Overall height**, and the height of each distinct section.
+- **What it must survive:** heat from a bulb or motor, sunlight, water, load.
+
+Sanity-check the numbers before modeling: a pitch longer than the threaded length,
+a root bigger than the crest, or parts that do not add up to the overall height are
+measuring slips. Ask about them rather than modeling them; the scripts refuse
+those cases. An earlier model of this same globe, built without these checks,
+took the root from the fixture's socket and got a thread 0.45 mm deep, where the
+glass's own groove measured 1.6 mm.
+
 ## Custom jigs
 
 Read `references/build123d_patterns.md` and `references/printer_specs.md` before
@@ -82,7 +123,8 @@ keep a part on the bed. Then:
   `export_stl`. Copy `printcheck.py` next to the custom script so the two travel
   together, rather than importing it from the skill's folder. It refuses an invalid
   shape, a solid that would print in mid-air, or a part too big for the bed at any
-  rotation, and rotates the part when only a diagonal fits. If it refuses, change the design (split a long jig into stages that register
+  rotation, and rotates the part when only a diagonal fits. It also warns about
+  surfaces sloping past 45 degrees, which need supports. If it refuses, change the design (split a long jig into stages that register
   on each other, or shrink it); never hand over an STL it rejected.
 - **Verify by measuring the solid, not by re-reading the code.** Probe hole positions
   with `is_inside`, heights with `bounding_box()`, angles from a face's normal. An
@@ -117,7 +159,8 @@ keep a part on the bed. Then:
 Give the user:
 - the STL's full path, its size, and the solid count (from `export_checked`'s output)
 - print orientation (as exported: the STL is already in print orientation),
-  perimeters and infill, and whether supports are needed (they should not be)
+  perimeters and infill, and whether supports are needed and where: the export's
+  overhang warning says (jigs usually need none; a sphere always does)
 - which dimensions to check with calipers after printing, and, for anything that must
   fit (pins, hardware, bushings), a suggestion to print a small test piece of just
   that feature first; clearances vary between printers and filaments

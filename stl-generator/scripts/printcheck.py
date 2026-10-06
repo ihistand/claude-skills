@@ -10,6 +10,10 @@ reach the printer:
   - every solid rests on the bed (z = 0); a solid that starts higher prints in mid-air
   - the part fits the bed, rotating it about Z if that is the only way it fits
 
+It also warns, without refusing, about surfaces that slope more than 45 degrees from
+vertical (they need supports, a different orientation, or a split) and notes flat
+undersides, which bridge fine over short spans.
+
 Use it for custom parts too (run the script from this directory, or put it on sys.path):
 
     from printcheck import export_checked, parse_bed
@@ -17,6 +21,7 @@ Use it for custom parts too (run the script from this directory, or put it on sy
 """
 
 import argparse
+import math
 import sys
 
 from build123d import Axis, Pos, export_stl
@@ -27,6 +32,7 @@ DEFAULT_BED = (220.0, 220.0, 260.0)
 LAYER_HEIGHT = 0.2
 PLA_DENSITY = 1.24  # g/cm^3
 Z_TOL = 1e-3
+OVERHANG_LIMIT = 45.0  # degrees from vertical a 0.4 mm nozzle bridges without support
 
 
 def parse_bed(text):
@@ -105,6 +111,42 @@ def check(part, bed):
     return problems, part
 
 
+def overhangs(part, limit_deg=OVERHANG_LIMIT, tolerance=0.05):
+    """Down-facing surfaces above the bed, split into two kinds.
+
+    Returns {"slope": (area_mm2, z_min, z_max) or None, "flat": area_mm2}.
+    "slope" is surface tilted more than `limit_deg` from vertical: it needs supports
+    (or another orientation, or a split), or the printer lays plastic on air. "flat"
+    is level undersides: the printer bridges those, which works for short spans
+    (ledges, steps, holes) but not wide ones. Faces resting on the bed are excluded.
+    """
+    sin_limit = math.sin(math.radians(limit_deg))
+    verts, tris = part.tessellate(tolerance, 0.1)
+    z_bed = part.bounding_box().min.Z
+    slope, flat, zs = 0.0, 0.0, []
+    for a, b, c in tris:
+        n = (verts[b] - verts[a]).cross(verts[c] - verts[a])  # points out of the material
+        length = n.length
+        if length == 0:
+            continue
+        down = -n.Z / length
+        if down <= sin_limit:
+            continue
+        tz = (verts[a].Z + verts[b].Z + verts[c].Z) / 3
+        if tz - z_bed < Z_TOL * 10:
+            continue  # the face on the bed
+        if down > 0.999:
+            flat += length / 2
+        else:
+            slope += length / 2
+            zs.append(tz)
+    # Under 1 mm^2 is tessellation noise, not a real overhang.
+    return {
+        "slope": (slope, min(zs) - z_bed, max(zs) - z_bed) if slope >= 1.0 else None,
+        "flat": flat if flat >= 1.0 else 0.0,
+    }
+
+
 def summarize(part):
     bb = part.bounding_box()
     grams = part.volume / 1000 * PLA_DENSITY
@@ -124,5 +166,17 @@ def export_checked(part, path, bed=DEFAULT_BED):
         sys.exit(1)
     export_stl(part, path)
     print(f"STL saved to {path}: {summarize(part)}")
+    hang = overhangs(part)
+    if hang["slope"]:
+        area, z0, z1 = hang["slope"]
+        print(
+            f"  warning: {area / 100:.1f} cm^2 of surface slopes past {OVERHANG_LIMIT:.0f} deg from vertical "
+            f"(between {z0:.1f} and {z1:.1f} mm up); it needs supports there"
+        )
+    if hang["flat"]:
+        print(
+            f"  note: {hang['flat'] / 100:.1f} cm^2 of flat underside; fine as a bridge if no span is "
+            "wider than about 30 mm, otherwise support it"
+        )
     return part
 
