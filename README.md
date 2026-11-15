@@ -25,6 +25,7 @@ ln -s "$PWD/claude-skills/stl-generator" ~/.claude/skills/
 | Skill | Use it when |
 |-------|-------------|
 | [stl-generator](stl-generator/) | Designing 3D-printable woodworking jigs and fixtures (circle-cutting trammels, angle wedges, spacing blocks, drilling guides, alignment fixtures) and replacement parts modeled from a measured original (such as a threaded light globe), with [build123d](https://github.com/gumyr/build123d). Ships tested ready scripts and a print-readiness check that refuses STLs that would misprint and flags overhangs that need supports. Defaults to an Elegoo Neptune 4 Pro's bed; `--bed` sets any other. Needs Python with build123d (`uv run --with build123d` works with no setup). |
+| [macos-app-design](macos-app-design/) | Designing, restyling or polishing a native macOS app's UI in SwiftUI or AppKit: a new window, screen, sheet, inspector or Settings pane, or making an existing Mac screen look better. Steers away from web styling (chips, shadowed cards, tinted lanes, hover lifts) to the Mac's own containers and conventions, and ends with a screenshot check. `references/behaviour.md` covers menus, shortcuts, context menus, destructive actions, panels and the sandbox. |
 
 ### Elsewhere
 
@@ -34,6 +35,8 @@ ln -s "$PWD/claude-skills/stl-generator" ~/.claude/skills/
 - **dataform-engineering-fundamentals** was retired from this repo and from the
   [ihistand/claude-plugins](https://github.com/ihistand/claude-plugins) marketplace in
   September 2026, and is no longer published.
+- **macos-app-design** is also packaged as the `macos-app-toolkit` plugin in
+  [ihistand/claude-plugins](https://github.com/ihistand/claude-plugins).
 - **stl-generator** is also packaged as the `stl-generator-toolkit` plugin in
   [ihistand/claude-plugins](https://github.com/ihistand/claude-plugins), with
   `/stl-circle-jig`, `/stl-angle-wedge`, `/stl-spacing-block`, and `/stl-generate` commands.
