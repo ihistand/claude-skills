@@ -37,12 +37,17 @@ Work through these in order and write the answer to each down before you write c
    - copy on select;
    - a heuristic that acts for the user.
 
-   The owner decides each one. Then:
+   The owner decides each one; your line is advice, never a veto. Then:
    - **When you can ask the owner** (you are talking to them), put those lines to them and wait
      for an answer before building the items that depend on it. Build the rest meanwhile.
-   - **When you cannot ask** (a subagent, a headless run), build the Mac-native version. Make the
-     requested version a single setting or constant away. List each deviation at the top of your
-     report, with that line and where to change it.
+   - **When you cannot ask** (a subagent, a headless run, "no time for back-and-forth"), the request
+     is the owner's decision: build what they asked. Make the Mac-native version a single setting or
+     constant away, and list each deviation at the top of your report with its line and where to
+     switch.
+   - **When the owner has already weighed it** ("I know Mac apps don't do this; I want it"), build it
+     with no switch and no argument. Your report gives it one line.
+   - **Choices the request leaves open** (anything the owner didn't name) take the Mac-native
+     version.
    - **Either way, never add behaviour the request didn't ask for** to make up for a deviation, such
      as a silent save on quit. Propose it in the same list instead.
 
@@ -85,7 +90,9 @@ Work through these in order and write the answer to each down before you write c
    - Take materials from the system containers (sidebar, toolbar, popover, sheet). Never hand-build
      blur or glass.
 6. **Make it behave like a Mac:**
-   - Selection with a highlight, and Return or double-click to open the selected item.
+   - Selection with a highlight. Open follows the system app from step 1: in a Finder-like list,
+     double-click or ⌘O opens and Return renames the item; where rows can't be renamed, Return or
+     double-click opens, as in Mail.
    - Arrow keys and Tab move between items.
    - Every toolbar action is also a menu-bar command, with a shortcut where it is frequent
      (`.commands`, `.keyboardShortcut`).
@@ -109,8 +116,12 @@ Work through these in order and write the answer to each down before you write c
    - measuring layout bugs.
 7. **Look at it before you call it done.** A clean build and green unit tests prove little about
    layout.
-   - Render it as an Xcode preview (with the xcode plugin's preview tool), or build it and capture the
-     window with `screencapture -l <windowid>` or an XCUITest screenshot.
+   - Take a screenshot of the running app. The default route is a throwaway XCUITest that launches
+     the app, reaches the screen and attaches `app.windows.firstMatch.screenshot()` with
+     `lifetime = .keepAlways`. Read the result back with `xcrun xcresulttool export attachments`.
+   - An Xcode preview (with the xcode plugin's preview tool) also works for one view.
+   - `screencapture -l <windowid>` needs the window's ID, from `CGWindowListCopyWindowInfo`, and
+     the Screen Recording permission. Use it only when neither route above works.
    - Check light and dark, the narrowest and the widest window, Increase Contrast, and VoiceOver on
      one row.
    - Put the screenshot beside the system app from step 1. Remove anything that system app would not
@@ -130,7 +141,7 @@ Work through these in order and write the answer to each down before you write c
 | A custom `Layout` to wrap tags | Text that wraps, or a `Table` column |
 | A segmented filter inside the sidebar | `.searchScopes`, or a toolbar `Picker` |
 | An icon on every label | Icons where Mac apps put them: sidebar rows, toolbar buttons, menu items |
-| A click on a card navigates away | Click selects; Return or double-click opens; the detail follows the selection |
+| A click on a card navigates away | Click selects; double-click or ⌘O opens (Return as in the step 1 app); the detail follows the selection |
 | Fixed columns at any width | Content that reflows, or a `Table` the user can resize |
 
 ## Red flags: stop and go back to the recipe
@@ -140,7 +151,8 @@ Stop when you notice yourself doing any of these:
 - writing a `Color` per category, or a `switch` that maps statuses to colours;
 - writing `onHover` with an animation;
 - writing a custom `Layout`;
-- changing an item's visible words (capitalising a status, renaming a heading) to make it look nicer;
+- changing an item's visible words (capitalising a status, renaming a heading) to make it look nicer:
+  the words are the app's content, which a design change was not asked to alter;
 - skipping the screenshot because "it should look right".
 
 ## Related

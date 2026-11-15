@@ -77,13 +77,6 @@ permission, in SwiftUI or AppKit.
 - **A panel that looks borderless is a titled panel with a transparent title bar,** so its edges
   can still be dragged to resize it.
 
-## Alternative views
-
-- **Offer another way to view content (a table for a CSV, a preview for Markdown) with a small
-  hint. Never switch to it automatically.** The plain view stays the default when the other view
-  would rewrite the file.
-- **Keep one source of truth.** Other views read it, and only one surface edits it at a time.
-
 ## Sandbox, App Store and permissions
 
 - **Don't show a control that cannot work in this build.** A sandboxed or App Store build hides a
@@ -96,9 +89,9 @@ permission, in SwiftUI or AppKit.
 - **The Accessibility permission belongs to one copy of the app.** When it is on for another copy
   (an older download, a Debug build), say how to remove the app with − and add it again.
 
-## Launch, state and settings
+## Launch, state, settings and alternative views
 
-- **No splash or launch screen.** When startup feels slow, show the main window sooner by deferring
+- **No splash or launch screen** unless the owner asks for one (SKILL.md step 0). When startup feels slow, show the main window sooner by deferring
   work (restoring the session, scanning files, starting helpers) until after it appears.
 - **Prefer an explicit command to a clever heuristic.** When the app can't tell two cases apart
   reliably, give the user a one-click command and keep the simple default. One example is an
@@ -111,17 +104,18 @@ permission, in SwiftUI or AppKit.
   in `windowWillClose`, so a half-typed number is saved rather than dropped.
 - **Defaults that follow another platform's habits ship off.** Terminal copy-on-select is one
   example.
+- **Offer another way to view content (a table for a CSV, a preview for Markdown) with a small
+  hint. Never switch to it automatically.** The plain view stays the default when the other view
+  would rewrite the file.
+- **Keep one source of truth.** Other views read it, and only one surface edits it at a time.
 
-## Accessibility of custom AppKit views
+## Custom AppKit views: accessibility and appearance
 
 - **A plain `NSView` is not an accessibility element** until it has a role. A custom tab strip is
   a tab group of radio-button tabs, with a "Close Tab" custom action.
 - **An element reports itself dimmed unless `setAccessibilityEnabled(true)`.**
 - **A label inside a custom button can answer the accessibility hit test through its cell,**
   even with `setAccessibilityElement(false)`. Make the button's `hitTest` return the button.
-
-## Appearance
-
 - **Route appearance changes through one place.** Every view that draws its own colours
   re-styles when light or dark changes. A reusable view never sets `NSApp.appearance` itself.
 
@@ -141,13 +135,13 @@ permission, in SwiftUI or AppKit.
     constraints.
   - Settle with several `layoutSubtreeIfNeeded()` and short run-loop passes; one is often not
     enough.
-  - `xcodebuild test` does not pass your environment to the test runner, so a debug print gated
+  - `xcodebuild test` (as of Xcode 26) does not pass your environment to the test runner, so a debug print gated
     on an environment variable never fires.
 - **Some "bugs" are the system's own behaviour.** With System Settings ▸ Appearance ▸ Show scroll
   bars on Automatic and no mouse attached, scroll bars are overlay bars. They appear only while
-  scrolling in their direction, and macOS 26 does not reveal them on hover. Check the setting
+  scrolling in their direction, and macOS 26 does not reveal them on hover (re-check on a newer macOS). Check the setting
   before changing the app.
-- **AppKit facts measured on macOS 26:**
+- **AppKit facts measured on macOS 26** (re-check on a newer macOS before you rely on one):
   - An `NSScrollView` with legacy scrollers reserves no space for them: content draws under the
     bars.
   - An `NSScroller` fixes its orientation from the aspect ratio of the frame it was created with;
